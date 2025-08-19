@@ -1,0 +1,26 @@
+[project]
+name = "mesh2brick"
+version = "0.1.0"
+description = "Convert a 3D object into a brick structure."
+readme = "README.md"
+authors = [
+    { name = "Ava Pun", email = "apun@andrew.cmu.edu" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "gurobipy",
+    "matplotlib",
+    "networkx",
+    "numpy",
+    "open3d",
+]
+
+[project.scripts]
+mesh2brick = "mesh2brick.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8.3.5"]
