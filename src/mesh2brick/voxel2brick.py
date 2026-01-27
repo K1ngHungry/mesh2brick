@@ -30,8 +30,8 @@ def k_ring_neighbors(node, k: int, graph: nx.Graph) -> list:
 
 def valid_brick(h, w) -> bool:
     try:
-        dimensions_to_brick_id(h, w)
-        return True
+        bid = dimensions_to_brick_id(h, w)
+        return brick_library[str(bid)]['height'] == 3
     except ValueError:
         return False
 
@@ -166,9 +166,9 @@ class Voxel2Brick:
         assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
 
     def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable) -> None:
-        brick_dimensions = ([(v['height'], v['width']) for v in brick_library.values()] +
-                            [(v['width'], v['height']) for v in brick_library.values()
-                             if v['height'] != v['width']])
+        brick_dimensions = ([(v['length'], v['width']) for v in brick_library.values() if v['height'] == 3] +
+                            [(v['width'], v['length']) for v in brick_library.values()
+                             if v['length'] != v['width'] and v['height'] == 3])
 
         # Enumerate possible brick placements
         min_x = first_nonzero_idx(voxel_subset[..., z].sum(axis=1))

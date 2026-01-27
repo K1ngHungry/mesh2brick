@@ -4,13 +4,13 @@ from pathlib import Path
 with open(Path(__file__).parent / 'brick_library.json') as f:
     brick_library = json.load(f)  # Maps brick ID to brick properties
 
-max_brick_dimension = max(max(properties['height'], properties['width']) for properties in brick_library.values())
+max_brick_dimension = max(max(properties['length'], properties['width']) for properties in brick_library.values())
 
 
 def _make_dimensions_to_brick_id_dict() -> dict:
     result = {}
     for brick_id, properties in brick_library.items():
-        key = (properties['height'], properties['width'])
+        key = (properties['length'], properties['width'])
         if key not in result.keys():
             result[key] = int(brick_id)
     return result
@@ -29,7 +29,7 @@ def dimensions_to_brick_id(h: int, w: int):
 
 
 def brick_id_to_dimensions(brick_id: int) -> (int, int):
-    return brick_library[str(brick_id)]['height'], brick_library[str(brick_id)]['width']
+    return brick_library[str(brick_id)]['length'], brick_library[str(brick_id)]['width']
 
 
 def brick_id_to_part_id(brick_id: int) -> str:

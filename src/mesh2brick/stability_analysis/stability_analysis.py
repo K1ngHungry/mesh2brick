@@ -71,13 +71,12 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        if brick_id == "0" or brick_id == "1" or brick_id == "13":
-            continue
+        brick_id = str(brick["brick_id"])
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["height"]
+            h = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
-            w = brick_library[brick_id]["height"]
+            w = brick_library[brick_id]["length"]
             h = brick_library[brick_id]["width"]
         brick_x = brick["x"]
         brick_y = brick["y"]
@@ -119,13 +118,12 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        if brick_id == "0" or brick_id == "1" or brick_id == "13":
-            continue
+        brick_id = str(brick["brick_id"])
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["height"]
+            h = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
-            w = brick_library[brick_id]["height"]
+            w = brick_library[brick_id]["length"]
             h = brick_library[brick_id]["width"]
 
         brick_x = brick["x"]
@@ -195,13 +193,12 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        if brick_id == "0" or brick_id == "1" or brick_id == "13":
-            continue
+        brick_id = str(brick["brick_id"])
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["height"]
+            h = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
-            w = brick_library[brick_id]["height"]
+            w = brick_library[brick_id]["length"]
             h = brick_library[brick_id]["width"]
 
         brick_weight = brick_library[brick_id]["mass"] * g_
@@ -477,13 +474,12 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        if brick_id == "0" or brick_id == "1" or brick_id == "13":
-            continue
+        brick_id = str(brick["brick_id"])
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["height"]
+            h = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
-            w = brick_library[brick_id]["height"]
+            w = brick_library[brick_id]["length"]
             h = brick_library[brick_id]["width"]
         brick_x = brick["x"]
         brick_y = brick["y"]
@@ -522,3 +518,4 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     model.close()
     analysis_score = heatmap_color[:, :, :, 0]
     return analysis_score, num_vars, num_constr, total_t, solve_t
+

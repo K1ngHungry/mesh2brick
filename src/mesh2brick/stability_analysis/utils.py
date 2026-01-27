@@ -7,10 +7,10 @@ def construct_world_grid(bricks, world_dimension, brick_library):
         brick = bricks[key]
         brick_id = str(brick["brick_id"])
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["height"]
+            h = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
-            w = brick_library[brick_id]["height"]
+            w = brick_library[brick_id]["length"]
             h = brick_library[brick_id]["width"]
         brick_x = brick["x"]
         brick_y = brick["y"]
