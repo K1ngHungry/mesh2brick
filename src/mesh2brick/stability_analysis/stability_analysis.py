@@ -71,45 +71,49 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        brick_id = str(brick["brick_id"])
+        h = brick_library[brick_id]["height"]
+
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["length"]
+            l = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
             w = brick_library[brick_id]["length"]
-            h = brick_library[brick_id]["width"]
+            l = brick_library[brick_id]["width"]
         brick_x = brick["x"]
         brick_y = brick["y"]
         brick_z = brick["z"]
-        if min(w, h) < 2:
+        if min(w, l) < 2:
             four_pt_connections = 1
         else:
             four_pt_connections = 0
-        for x in range(brick_x, brick_x + h):
+            
+        for x in range(brick_x, brick_x + l):
             for y in range(brick_y, brick_y + w):
-                force_key = gen_key(x, y, brick_z)
-                if force_key not in force_dict.keys():
-                    force_dict[force_key] = dict()
-                force_dict[force_key]["four_pt_connection"] = four_pt_connections
-                force_dict[force_key]["brick_id"] = brick_id
+                for z_offset in range(h):
+                    current_z = brick_z + z_offset
+                    force_key = gen_key(x, y, current_z)
+                    if force_key not in force_dict.keys():
+                        force_dict[force_key] = dict()
+                    force_dict[force_key]["four_pt_connection"] = four_pt_connections
+                    force_dict[force_key]["brick_id"] = brick_id
 
-                # Horizontal force from adjacent bricks
-                if (out_boundary([x - 1, y], brick_x, brick_y, h, w) and x - 1 >= 0 and world_grid[
-                    x - 1, y, brick_z] == 1):
-                    force_dict[force_key]["external_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                           name=force_key + "_external_x_pos")
-                if (out_boundary([x + 1, y], brick_x, brick_y, h, w) and x + 1 < world_dim[0] and world_grid[
-                    x + 1, y, brick_z] == 1):
-                    force_dict[force_key]["external_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                           name=force_key + "_external_x_neg")
-                if (out_boundary([x, y - 1], brick_x, brick_y, h, w) and y - 1 >= 0 and world_grid[
-                    x, y - 1, brick_z] == 1):
-                    force_dict[force_key]["external_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                           name=force_key + "_external_y_pos")
-                if (out_boundary([x, y + 1], brick_x, brick_y, h, w) and y + 1 < world_dim[1] and world_grid[
-                    x, y + 1, brick_z] == 1):
-                    force_dict[force_key]["external_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                           name=force_key + "_external_y_neg")
+                    # Horizontal force from adjacent bricks
+                    if (out_boundary([x - 1, y], brick_x, brick_y, l, w) and x - 1 >= 0 and world_grid[
+                        x - 1, y, current_z] != 0):
+                        force_dict[force_key]["external_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_external_x_pos")
+                    if (out_boundary([x + 1, y], brick_x, brick_y, l, w) and x + 1 < world_dim[0] and world_grid[
+                        x + 1, y, current_z] != 0):
+                        force_dict[force_key]["external_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_external_x_neg")
+                    if (out_boundary([x, y - 1], brick_x, brick_y, l, w) and y - 1 >= 0 and world_grid[
+                        x, y - 1, current_z] != 0):
+                        force_dict[force_key]["external_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_external_y_pos")
+                    if (out_boundary([x, y + 1], brick_x, brick_y, l, w) and y + 1 < world_dim[1] and world_grid[
+                        x, y + 1, current_z] != 0):
+                        force_dict[force_key]["external_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_external_y_neg")
 
     # Construct force variables.
     # for i in range(world_dim[0]):
@@ -118,96 +122,105 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        brick_id = str(brick["brick_id"])
+        
+        h = brick_library[brick_id]["height"]
+
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["length"]
+            l = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
             w = brick_library[brick_id]["length"]
-            h = brick_library[brick_id]["width"]
+            l = brick_library[brick_id]["width"]
 
         brick_x = brick["x"]
         brick_y = brick["y"]
         brick_z = brick["z"]
-        for i in range(brick_x, brick_x + h):
+        for i in range(brick_x, brick_x + l):
             for j in range(brick_y, brick_y + w):
-                k = brick_z
-                if world_grid[i, j, k] == 0:  # No brick exists
-                    continue
-                force_key = gen_key(i, j, k)
-                # Top knob is connected
-                if k < world_dim[2] - 1 and world_grid[i, j, k + 1] != 0:
-                    force_key_top = gen_key(i, j, k + 1)
-                    top_four_pt_connections = force_dict[force_key_top]["four_pt_connection"]
+                for z_offset in range(h):
+                    k = brick_z + z_offset
+                    if world_grid[i, j, k] == 0:  # No brick exists
+                        continue
+                    force_key = gen_key(i, j, k)
+                    # Top knob is connected
+                    if z_offset == h - 1:
+                        if k < world_dim[2] - 1 and world_grid[i, j, k + 1] != 0:
+                            force_key_top = gen_key(i, j, k + 1)
+                            top_four_pt_connections = force_dict[force_key_top]["four_pt_connection"]
 
-                    # Horizontal knob presses due to connection in 4 directions
-                    force_dict[force_key]["top_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_top_x_pos")
-                    force_dict[force_key]["top_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_top_x_neg")
-                    force_dict[force_key]["top_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_top_y_pos")
-                    force_dict[force_key]["top_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_top_y_neg")
+                            # Horizontal knob presses due to connection in 4 directions
+                            force_dict[force_key]["top_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_top_x_pos")
+                            force_dict[force_key]["top_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_top_x_neg")
+                            force_dict[force_key]["top_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_top_y_pos")
+                            force_dict[force_key]["top_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_top_y_neg")
 
-                    # Top is connected to a 2xX brick, 3-pt connection
-                    if top_four_pt_connections == 0:
-                        force_dict[force_key]["f_up"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_f_up")
-                        force_dict[force_key]["n_down"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
-                                                                        name=force_key + "_n_down")
-                    # Top is connected to a 1xX brick, 4-pt connection
-                    else:
-                        force_dict[force_key]["f_up"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_f_up")
-                        force_dict[force_key]["n_down"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
-                                                                        name=force_key + "_n_down")
-                # Bottom cavity is connected
-                if k == 0 or world_grid[i, j, k - 1] != 0:
-                    cur_four_pt_connections = force_dict[force_key]["four_pt_connection"]
+                            # Top is connected to a 2xX brick, 3-pt connection
+                            if top_four_pt_connections == 0:
+                                force_dict[force_key]["f_up"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_f_up")
+                                force_dict[force_key]["n_down"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_n_down")
+                            # Top is connected to a 1xX brick, 4-pt connection
+                            else:
+                                force_dict[force_key]["f_up"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_f_up")
+                                force_dict[force_key]["n_down"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_n_down")
+                    # Bottom cavity is connected
+                    if z_offset == 0:
+                        if k == 0 or world_grid[i, j, k - 1] != 0:
+                            cur_four_pt_connections = force_dict[force_key]["four_pt_connection"]
 
-                    # Horizontal knob presses due to connection in 4 directions
-                    force_dict[force_key]["bottom_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                         name=force_key + "_bottom_x_pos")
-                    force_dict[force_key]["bottom_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                         name=force_key + "_bottom_x_neg")
-                    force_dict[force_key]["bottom_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                         name=force_key + "_bottom_y_pos")
-                    force_dict[force_key]["bottom_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
-                                                                         name=force_key + "_bottom_y_neg")
+                            # Horizontal knob presses due to connection in 4 directions
+                            force_dict[force_key]["bottom_x_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_bottom_x_pos")
+                            force_dict[force_key]["bottom_x_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_bottom_x_neg")
+                            force_dict[force_key]["bottom_y_pos"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_bottom_y_pos")
+                            force_dict[force_key]["bottom_y_neg"] = model.addVar(vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_bottom_y_neg")
 
-                    # Brick is a 2xX brick, 3-pt connection
-                    if cur_four_pt_connections == 0:
-                        force_dict[force_key]["f_down"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
-                                                                        name=force_key + "_f_down")
-                        force_dict[force_key]["n_up"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_n_up")
-                    # Brick is a 1xX brick, 4-pt connection
-                    else:
-                        force_dict[force_key]["f_down"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
-                                                                        name=force_key + "_f_down")
-                        force_dict[force_key]["n_up"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
-                                                                      name=force_key + "_n_up")
+                            # Brick is a 2xX brick, 3-pt connection
+                            if cur_four_pt_connections == 0:
+                                force_dict[force_key]["f_down"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_f_down")
+                                force_dict[force_key]["n_up"] = model.addVars(3, vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_n_up")
+                            # Brick is a 1xX brick, 4-pt connection
+                            else:
+                                force_dict[force_key]["f_down"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
+                                                                                name=force_key + "_f_down")
+                                force_dict[force_key]["n_up"] = model.addVars(4, vtype=gp.GRB.CONTINUOUS,
+                                                                            name=force_key + "_n_up")
 
     # Setup Constraints
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        brick_id = str(brick["brick_id"])
+        
+        h = brick_library[brick_id]["height"]
+
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["length"]
+            l = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
             w = brick_library[brick_id]["length"]
-            h = brick_library[brick_id]["width"]
+            l = brick_library[brick_id]["width"]
 
         brick_weight = brick_library[brick_id]["mass"] * g_
         brick_x = brick["x"]
         brick_y = brick["y"]
         brick_z = brick["z"]
-        center_x = brick_x + (h - 1) / 2
-        center_y = brick_y + (w - 1) / 2
-
+        
+        center_x = brick_x + (l - 1) / 2.0
+        center_y = brick_y + (w - 1) / 2.0
+        center_z_index = (h - 1) / 2.0 # Relative to brick_z
+        
         sum_x_pos_list = []
         sum_x_neg_list = []
         sum_y_pos_list = []
@@ -219,191 +232,200 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
         torque2_pos_list = []
         torque2_neg_list = []
         brick_f_down_list = []
-        for i in range(brick_x, brick_x + h):
+        for i in range(brick_x, brick_x + l):
             for j in range(brick_y, brick_y + w):
-                force_key = gen_key(i, j, brick_z)
+                for z_offset in range(h):
+                    k = brick_z + z_offset
+                    force_key = gen_key(i, j, k)
 
-                # Horizontal presses due to adjacent bricks
-                if "external_x_pos" in force_dict[force_key]:
-                    model.addConstr(force_dict[force_key]["external_x_pos"] == force_dict[gen_key(i - 1, j, brick_z)][
-                        "external_x_neg"])
-                    sum_x_pos_list.append(force_dict[force_key]["external_x_pos"])
-                    torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["external_x_pos"])
-                if "external_x_neg" in force_dict[force_key]:
-                    model.addConstr(force_dict[force_key]["external_x_neg"] == force_dict[gen_key(i + 1, j, brick_z)][
-                        "external_x_pos"])
-                    sum_x_neg_list.append(force_dict[force_key]["external_x_neg"])
-                    torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["external_x_neg"])
-                if "external_y_pos" in force_dict[force_key]:
-                    model.addConstr(force_dict[force_key]["external_y_pos"] == force_dict[gen_key(i, j - 1, brick_z)][
-                        "external_y_neg"])
-                    sum_y_pos_list.append(force_dict[force_key]["external_y_pos"])
-                    torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["external_y_pos"])
-                if "external_y_neg" in force_dict[force_key]:
-                    model.addConstr(force_dict[force_key]["external_y_neg"] == force_dict[gen_key(i, j + 1, brick_z)][
-                        "external_y_pos"])
-                    sum_y_neg_list.append(force_dict[force_key]["external_y_neg"])
-                    torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["external_y_neg"])
+                    # Horizontal presses due to adjacent bricks
+                    if "external_x_pos" in force_dict[force_key]:
+                        model.addConstr(force_dict[force_key]["external_x_pos"] == force_dict[gen_key(i - 1, j, k)][
+                            "external_x_neg"])
+                        sum_x_pos_list.append(force_dict[force_key]["external_x_pos"])
+                        torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["external_x_pos"])
+                    if "external_x_neg" in force_dict[force_key]:
+                        model.addConstr(force_dict[force_key]["external_x_neg"] == force_dict[gen_key(i + 1, j, k)][
+                            "external_x_pos"])
+                        sum_x_neg_list.append(force_dict[force_key]["external_x_neg"])
+                        torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["external_x_neg"])
+                    if "external_y_pos" in force_dict[force_key]:
+                        model.addConstr(force_dict[force_key]["external_y_pos"] == force_dict[gen_key(i, j - 1, k)][
+                            "external_y_neg"])
+                        sum_y_pos_list.append(force_dict[force_key]["external_y_pos"])
+                        torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["external_y_pos"])
+                    if "external_y_neg" in force_dict[force_key]:
+                        model.addConstr(force_dict[force_key]["external_y_neg"] == force_dict[gen_key(i, j + 1, k)][
+                            "external_y_pos"])
+                        sum_y_neg_list.append(force_dict[force_key]["external_y_neg"])
+                        torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["external_y_neg"])
 
-                # Top knob is connected
-                if "f_up" in force_dict[force_key]:
-                    force_key_top = gen_key(i, j, brick_z + 1)
+                    # Top knob is connected (Only check top layer)
+                    if "f_up" in force_dict[force_key]:
+                        if z_offset == h - 1:
+                            force_key_top = gen_key(i, j, k + 1)
 
-                    # Horizontal knob presses
-                    sum_x_pos_list.append(force_dict[force_key]["top_x_pos"])
-                    sum_x_neg_list.append(force_dict[force_key]["top_x_neg"])
-                    sum_y_pos_list.append(force_dict[force_key]["top_y_pos"])
-                    sum_y_neg_list.append(force_dict[force_key]["top_y_neg"])
-                    model.addConstr(force_dict[force_key]["top_x_pos"] == force_dict[force_key_top]["bottom_x_neg"])
-                    model.addConstr(force_dict[force_key]["top_x_neg"] == force_dict[force_key_top]["bottom_x_pos"])
-                    model.addConstr(force_dict[force_key]["top_y_pos"] == force_dict[force_key_top]["bottom_y_neg"])
-                    model.addConstr(force_dict[force_key]["top_y_neg"] == force_dict[force_key_top]["bottom_y_pos"])
+                            # Horizontal knob presses
+                            sum_x_pos_list.append(force_dict[force_key]["top_x_pos"])
+                            sum_x_neg_list.append(force_dict[force_key]["top_x_neg"])
+                            sum_y_pos_list.append(force_dict[force_key]["top_y_pos"])
+                            sum_y_neg_list.append(force_dict[force_key]["top_y_neg"])
+                            
+                            model.addConstr(force_dict[force_key]["top_x_pos"] == force_dict[force_key_top]["bottom_x_neg"])
+                            model.addConstr(force_dict[force_key]["top_x_neg"] == force_dict[force_key_top]["bottom_x_pos"])
+                            model.addConstr(force_dict[force_key]["top_y_pos"] == force_dict[force_key_top]["bottom_y_neg"])
+                            model.addConstr(force_dict[force_key]["top_y_neg"] == force_dict[force_key_top]["bottom_y_pos"])
 
-                    for k in range(len(force_dict[force_key]["f_up"])):
-                        sum_z_pos_list.append(force_dict[force_key]["f_up"][k])
-                        sum_z_neg_list.append(force_dict[force_key]["n_down"][k])
-                        model.addConstr(force_dict[force_key]["n_down"][k] * force_dict[force_key]["f_up"][k] == 0)
-                        model.addConstr(force_dict[force_key]["f_up"][k] == force_dict[force_key_top]["f_down"][k])
-                        model.addConstr(force_dict[force_key]["n_down"][k] == force_dict[force_key_top]["n_up"][k])
+                            for k_f in range(len(force_dict[force_key]["f_up"])):
+                                sum_z_pos_list.append(force_dict[force_key]["f_up"][k_f])
+                                sum_z_neg_list.append(force_dict[force_key]["n_down"][k_f])
+                                model.addConstr(force_dict[force_key]["n_down"][k_f] * force_dict[force_key]["f_up"][k_f] == 0)
+                                model.addConstr(force_dict[force_key]["f_up"][k_f] == force_dict[force_key_top]["f_down"][k_f])
+                                model.addConstr(force_dict[force_key]["n_down"][k_f] == force_dict[force_key_top]["n_up"][k_f])
 
-                    torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["top_y_neg"])
-                    torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["top_y_pos"])
-                    torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_pos"])
-                    torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_neg"])
-                    if force_dict[force_key_top]["four_pt_connection"] == 1:
-                        torque1_pos_list.append(
-                            (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][0])
-                        torque1_neg_list.append(
-                            (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][0])
-                        torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_up"][0])
-                        torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_down"][0])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][1])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][1])
-                        torque2_neg_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][1])
-                        torque2_pos_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][1])
-                        torque1_pos_list.append(
-                            (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["f_up"][2])
-                        torque1_neg_list.append(
-                            (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["n_down"][2])
-                        torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_up"][2])
-                        torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_down"][2])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][3])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][3])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["n_down"][3])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["f_up"][3])
-                    else:
-                        torque1_pos_list.append(
-                            (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["f_up"][0])
-                        torque1_neg_list.append(
-                            (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["n_down"][0])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][0])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][0])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][1])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][1])
-                        torque2_pos_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][1])
-                        torque2_neg_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][1])
-                        torque1_pos_list.append(
-                            (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][2])
-                        torque1_neg_list.append(
-                            (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][2])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][2])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][2])
+                            torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["top_y_neg"])
+                            torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["top_y_pos"])
+                            torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_pos"])
+                            torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_neg"])
+                            
+                            if force_dict[force_key]["four_pt_connection"] == 1:
+                                torque1_pos_list.append(
+                                    (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][0])
+                                torque1_neg_list.append(
+                                    (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][0])
+                                torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_up"][0])
+                                torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_down"][0])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][1])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][1])
+                                torque2_neg_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][1])
+                                torque2_pos_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][1])
+                                torque1_pos_list.append(
+                                    (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["f_up"][2])
+                                torque1_neg_list.append(
+                                    (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["n_down"][2])
+                                torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_up"][2])
+                                torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_down"][2])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][3])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][3])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["n_down"][3])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["f_up"][3])
+                            else:
+                                torque1_pos_list.append(
+                                    (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["f_up"][0])
+                                torque1_neg_list.append(
+                                    (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["n_down"][0])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][0])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][0])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_up"][1])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_down"][1])
+                                torque2_pos_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_down"][1])
+                                torque2_neg_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][1])
+                                torque1_pos_list.append(
+                                    (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][2])
+                                torque1_neg_list.append(
+                                    (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][2])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_down"][2])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_up"][2])
 
-                        # Bottom cavity is connected
-                if "f_down" in force_dict[force_key]:
-                    if brick_z > 0:
-                        force_key_bottom = gen_key(i, j, brick_z - 1)
+                    # Bottom cavity is connected
+                    if "f_down" in force_dict[force_key]:
+                        if z_offset == 0:
+                            if k > 0:
+                                force_key_bottom = gen_key(i, j, k - 1)
+                            
 
-                    # Horizontal knob presses
-                    sum_x_pos_list.append(force_dict[force_key]["bottom_x_pos"])
-                    sum_x_neg_list.append(force_dict[force_key]["bottom_x_neg"])
-                    sum_y_pos_list.append(force_dict[force_key]["bottom_y_pos"])
-                    sum_y_neg_list.append(force_dict[force_key]["bottom_y_neg"])
-                    if brick_z > 0:
-                        model.addConstr(
-                            force_dict[force_key]["bottom_x_pos"] == force_dict[force_key_bottom]["top_x_neg"])
-                        model.addConstr(
-                            force_dict[force_key]["bottom_x_neg"] == force_dict[force_key_bottom]["top_x_pos"])
-                        model.addConstr(
-                            force_dict[force_key]["bottom_y_pos"] == force_dict[force_key_bottom]["top_y_neg"])
-                        model.addConstr(
-                            force_dict[force_key]["bottom_y_neg"] == force_dict[force_key_bottom]["top_y_pos"])
-                    for k in range(len(force_dict[force_key]["f_down"])):
-                        sum_z_pos_list.append(force_dict[force_key]["n_up"][k])
-                        sum_z_neg_list.append(force_dict[force_key]["f_down"][k])
-                        sum_f_list.append(force_dict[force_key]["f_down"][k])
-                        brick_f_down_list.append(force_dict[force_key]["f_down"][k])
-                        model.addConstr(force_dict[force_key]["n_up"][k] * force_dict[force_key]["f_down"][k] == 0)
-                        if brick_z > 0:
-                            model.addConstr(
-                                force_dict[force_key]["f_down"][k] == force_dict[force_key_bottom]["f_up"][k])
-                            model.addConstr(
-                                force_dict[force_key]["n_up"][k] == force_dict[force_key_bottom]["n_down"][k])
+                            # Horizontal knob presses
+                            sum_x_pos_list.append(force_dict[force_key]["bottom_x_pos"])
+                            sum_x_neg_list.append(force_dict[force_key]["bottom_x_neg"])
+                            sum_y_pos_list.append(force_dict[force_key]["bottom_y_pos"])
+                            sum_y_neg_list.append(force_dict[force_key]["bottom_y_neg"])
+                            
+                            if k > 0:
+                                model.addConstr(
+                                    force_dict[force_key]["bottom_x_pos"] == force_dict[force_key_bottom]["top_x_neg"])
+                                model.addConstr(
+                                    force_dict[force_key]["bottom_x_neg"] == force_dict[force_key_bottom]["top_x_pos"])
+                                model.addConstr(
+                                    force_dict[force_key]["bottom_y_pos"] == force_dict[force_key_bottom]["top_y_neg"])
+                                model.addConstr(
+                                    force_dict[force_key]["bottom_y_neg"] == force_dict[force_key_bottom]["top_y_pos"])
+                            for k_f in range(len(force_dict[force_key]["f_down"])):
+                                sum_z_pos_list.append(force_dict[force_key]["n_up"][k_f])
+                                sum_z_neg_list.append(force_dict[force_key]["f_down"][k_f])
+                                sum_f_list.append(force_dict[force_key]["f_down"][k_f])
+                                brick_f_down_list.append(force_dict[force_key]["f_down"][k_f])
+                                model.addConstr(force_dict[force_key]["n_up"][k_f] * force_dict[force_key]["f_down"][k_f] == 0)
+                                if k > 0:
+                                    model.addConstr(
+                                        force_dict[force_key]["f_down"][k_f] == force_dict[force_key_bottom]["f_up"][k_f])
+                                    model.addConstr(
+                                        force_dict[force_key]["n_up"][k_f] == force_dict[force_key_bottom]["n_down"][k_f])
 
-                    torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_y_pos"])
-                    torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_y_neg"])
-                    torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_x_neg"])
-                    torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_x_pos"])
-                    if force_dict[force_key]["four_pt_connection"] == 1:
-                        torque1_pos_list.append(
-                            (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][0])
-                        torque1_neg_list.append(
-                            (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][0])
-                        torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_up"][0])
-                        torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_down"][0])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][1])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][1])
-                        torque2_neg_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][1])
-                        torque2_pos_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][1])
-                        torque1_pos_list.append(
-                            (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["n_up"][2])
-                        torque1_neg_list.append(
-                            (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["f_down"][2])
-                        torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_up"][2])
-                        torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_down"][2])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][3])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][3])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["n_up"][3])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["f_down"][3])
-                    else:
-                        torque1_pos_list.append(
-                            (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["n_up"][0])
-                        torque1_neg_list.append(
-                            (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["f_down"][0])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][0])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][0])
-                        torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][1])
-                        torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][1])
-                        torque2_pos_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][1])
-                        torque2_neg_list.append(
-                            (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][1])
-                        torque1_pos_list.append(
-                            (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][2])
-                        torque1_neg_list.append(
-                            (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][2])
-                        torque2_pos_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][2])
-                        torque2_neg_list.append(
-                            (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][2])
-                torque1_neg_list.append((j - center_y) * brick_unit_length * (brick_weight / (h * w)))
-                torque2_pos_list.append((i - center_x) * brick_unit_length * (brick_weight / (h * w)))
+                            torque1_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_y_pos"])
+                            torque1_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_y_neg"])
+                            torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_x_neg"])
+                            torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["bottom_x_pos"])      
+                            
+                            if force_dict[force_key]["four_pt_connection"] == 1:
+                                torque1_pos_list.append(
+                                    (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][0])
+                                torque1_neg_list.append(
+                                    (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][0])
+                                torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_up"][0])
+                                torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_down"][0])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][1])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][1])
+                                torque2_neg_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][1])
+                                torque2_pos_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][1])
+                                torque1_pos_list.append(
+                                    (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["n_up"][2])
+                                torque1_neg_list.append(
+                                    (j - center_y + 0.25) * brick_unit_length * force_dict[force_key]["f_down"][2])
+                                torque2_neg_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["n_up"][2])
+                                torque2_pos_list.append((i - center_x) * brick_unit_length * force_dict[force_key]["f_down"][2])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][3])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][3])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["n_up"][3])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.25) * brick_unit_length * force_dict[force_key]["f_down"][3])
+                            else:
+                                torque1_pos_list.append(
+                                    (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["n_up"][0])
+                                torque1_neg_list.append(
+                                    (j - center_y - 0.125) * brick_unit_length * force_dict[force_key]["f_down"][0])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][0])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][0])
+                                torque1_pos_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["n_up"][1])
+                                torque1_neg_list.append((j - center_y) * brick_unit_length * force_dict[force_key]["f_down"][1])
+                                torque2_pos_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["f_down"][1])
+                                torque2_neg_list.append(
+                                    (i - center_x - 0.25) * brick_unit_length * force_dict[force_key]["n_up"][1])
+                                torque1_pos_list.append(
+                                    (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][2])
+                                torque1_neg_list.append(
+                                    (j - center_y + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][2])
+                                torque2_pos_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["f_down"][2])
+                                torque2_neg_list.append(
+                                    (i - center_x + 0.125) * brick_unit_length * force_dict[force_key]["n_up"][2])
+                torque1_neg_list.append((j - center_y) * brick_unit_length * (brick_weight / (l * w)))
+                torque2_pos_list.append((i - center_x) * brick_unit_length * (brick_weight / (l * w)))
 
         model.addConstr(
             force_sum_x_pos[int(key) - 1] == gp.quicksum(sum_x_pos_list[k] for k in range(len(sum_x_pos_list))))
@@ -474,39 +496,45 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     for key in brick_structure.keys():
         brick = brick_structure[key]
         brick_id = str(brick["brick_id"])
-        brick_id = str(brick["brick_id"])
+        
+        h = brick_library[brick_id]["height"]
+
         if brick["ori"] == 0:
-            h = brick_library[brick_id]["length"]
+            l = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:
             w = brick_library[brick_id]["length"]
-            h = brick_library[brick_id]["width"]
+            l = brick_library[brick_id]["width"]
         brick_x = brick["x"]
         brick_y = brick["y"]
         brick_z = brick["z"]
         min_c = T_
 
-        for i in range(brick_x, brick_x + h):
+        for i in range(brick_x, brick_x + l):
             for j in range(brick_y, brick_y + w):
-                force_key = gen_key(i, j, brick_z)
-                if "f_down" in force_dict[force_key]:
-                    for k in range(len(force_dict[force_key]["f_down"])):
-                        c = T_ - force_dict[force_key]["f_down"][k].X
-                        min_c = min(c, min_c)
-        for i in range(brick_x, brick_x + h):
+                for z_offset in range(h):
+                    k = brick_z + z_offset
+                    force_key = gen_key(i, j, k)
+                    if "f_down" in force_dict[force_key]:
+                        for k_f in range(len(force_dict[force_key]["f_down"])):
+                            c = T_ - force_dict[force_key]["f_down"][k_f].X
+                            min_c = min(c, min_c)
+        for i in range(brick_x, brick_x + l):
             for j in range(brick_y, brick_y + w):
-                if (force_abs_sum_z[int(key) - 1].X > 0 or
-                        force_abs_sum_x[int(key) - 1].X > 0 or
-                        force_abs_sum_y[int(key) - 1].X > 0 or
-                        torque_abs_sum_1[int(key) - 1].X > 0 or
-                        torque_abs_sum_2[int(key) - 1].X > 0 or
-                        min_c <= 0):
-                    heatmap_color[i, j, brick_z, 0] = 1
-                    heatmap_color[i, j, brick_z, 1] = 1
-                    heatmap_color[i, j, brick_z, 2] = 1
-                else:
-                    heatmap_color[i, j, brick_z, 0] = 1 - min_c / T_
-                    heatmap_color[i, j, brick_z, 1] = 1
+                for z_offset in range(h):
+                    k = brick_z + z_offset
+                    if (force_abs_sum_z[int(key) - 1].X > 0 or
+                            force_abs_sum_x[int(key) - 1].X > 0 or
+                            force_abs_sum_y[int(key) - 1].X > 0 or
+                            torque_abs_sum_1[int(key) - 1].X > 0 or
+                            torque_abs_sum_2[int(key) - 1].X > 0 or
+                            min_c <= 0):
+                        heatmap_color[i, j, k, 0] = 1
+                        heatmap_color[i, j, k, 1] = 1
+                        heatmap_color[i, j, k, 2] = 1
+                    else:
+                        heatmap_color[i, j, k, 0] = 1 - min_c / T_
+                        heatmap_color[i, j, k, 1] = 1
     if print_log:
         print("Obj Val:", model.objVal)
         print("Eq obj Val:", eq_obj.X)
