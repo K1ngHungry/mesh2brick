@@ -28,10 +28,10 @@ def k_ring_neighbors(node, k: int, graph: nx.Graph) -> list:
     return list(shortest_paths.keys())
 
 
-def valid_brick(h, w) -> bool:
+def valid_brick(l: int, w: int, h: int) -> bool:
     try:
-        bid = dimensions_to_brick_id(h, w)
-        return brick_library[str(bid)]['height'] == 3
+        dimensions_to_brick_id(l, w, h)
+        return True
     except ValueError:
         return False
 
@@ -39,17 +39,17 @@ def valid_brick(h, w) -> bool:
 def get_merged_brick(b1: Brick, b2: Brick) -> Brick | None:
     assert b1.z == b2.z
 
-    if b1.x == b2.x and b1.h == b2.h and (b1.y + b1.w == b2.y or b2.y + b2.w == b1.y):
-        new_h, new_w = b1.h, b1.w + b2.w
-        if valid_brick(new_h, new_w):
+    if b1.x == b2.x and b1.l == b2.l and b1.h == b2.h and (b1.y + b1.w == b2.y or b2.y + b2.w == b1.y):
+        new_l, new_w = b1.l, b1.w + b2.w
+        if valid_brick(new_l, new_w, b1.h):
             new_x, new_y = b1.x, min(b1.y, b2.y)
-            return Brick(h=new_h, w=new_w, x=new_x, y=new_y, z=b1.z)
+            return Brick(l=new_l, w=new_w, h=b1.h, x=new_x, y=new_y, z=b1.z)
 
-    elif b1.y == b2.y and b1.w == b2.w and (b1.x + b1.h == b2.x or b2.x + b2.h == b1.x):
-        new_h, new_w = b1.h + b2.h, b1.w
-        if valid_brick(new_h, new_w):
+    elif b1.y == b2.y and b1.w == b2.w and b1.h == b2.h and (b1.x + b1.l == b2.x or b2.x + b2.l == b1.x):
+        new_l, new_w = b1.l + b2.l, b1.w
+        if valid_brick(new_l, new_w, b1.h):
             new_x, new_y = min(b1.x, b2.x), b1.y
-            return Brick(h=new_h, w=new_w, x=new_x, y=new_y, z=b1.z)
+            return Brick(l=new_l, w=new_w, h=b1.h, x=new_x, y=new_y, z=b1.z)
 
     return None
 
@@ -142,8 +142,9 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             priority: Callable,
             reverse_layer_order: bool = False,
+            allowed_heights: tuple[int, ...] = (3,)
     ) -> None:
-        self._brickify_voxels(voxel_subset, lambda v, z: self._brickify_layer_greedy(v, z, priority),
+        self._brickify_voxels(voxel_subset, lambda v, z: self._brickify_layer_greedy(v, z, priority, allowed_heights),
                               reverse_layer_order=reverse_layer_order)
 
     def _brickify_voxels_merge(self, voxel_subset: np.ndarray, reverse_layer_order: bool = False) -> None:
@@ -165,19 +166,23 @@ class Voxel2Brick:
                 layer_brickify_fn(voxel_subset, z)
         assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
 
-    def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable) -> None:
-        brick_dimensions = ([(v['length'], v['width']) for v in brick_library.values() if v['height'] == 3] +
-                            [(v['width'], v['length']) for v in brick_library.values()
-                             if v['length'] != v['width'] and v['height'] == 3])
+    def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable,
+                               allowed_heights: tuple[int, ...] = (3,)) -> None:
+        brick_candidates = []
+        for h in allowed_heights:
+            brick_candidates.extend([(v['length'], v['width'], v['height']) for v in brick_library.values()
+                                     if v['height'] == h])
+            brick_candidates.extend([(v['width'], v['length'], v['height']) for v in brick_library.values()
+                                     if v['length'] != v['width'] and v['height'] == h])
 
         # Enumerate possible brick placements
         min_x = first_nonzero_idx(voxel_subset[..., z].sum(axis=1))
         max_x = self.max_x - first_nonzero_idx(voxel_subset[..., z].sum(axis=1)[::-1])
         min_y = first_nonzero_idx(voxel_subset[..., z].sum(axis=0))
         max_y = self.max_y - first_nonzero_idx(voxel_subset[..., z].sum(axis=0)[::-1])
-        all_brick_placements = [Brick(h=h, w=w, x=x, y=y, z=z)
-                                for h, w in brick_dimensions
-                                for x in range(min_x, max_x - h + 1) for y in range(min_y, max_y - w + 1)]
+        all_brick_placements = [Brick(l=l, w=w, h=h, x=x, y=y, z=z)
+                                for l, w, h in brick_candidates
+                                for x in range(min_x, max_x - l + 1) for y in range(min_y, max_y - w + 1)]
 
         # Filter out bricks that are not completely contained within the voxels
         valid_brick_placements = list(filter(lambda b: voxel_subset[b.slice].all(), all_brick_placements))
@@ -241,7 +246,7 @@ class Voxel2Brick:
     def _brickify_layer_merge(self, voxel_subset: np.ndarray, z: int) -> None:
         # Fill with 1x1 bricks
         voxel_idxs = list(zip(*np.nonzero(voxel_subset[..., z])))
-        brick_1x1s = [Brick(h=1, w=1, x=x, y=y, z=z) for x, y in voxel_idxs]
+        brick_1x1s = [Brick(l=1, w=1, h=1, x=x, y=y, z=z) for x, y in voxel_idxs]
         node_ids = [self.bricks.add_brick(brick) for brick in brick_1x1s]
 
         # Add all mergeable brick pairs to queue
