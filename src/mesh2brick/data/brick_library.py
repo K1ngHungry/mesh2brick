@@ -10,7 +10,7 @@ max_brick_dimension = max(max(properties['length'], properties['width']) for pro
 def _make_dimensions_to_brick_id_dict() -> dict:
     result = {}
     for brick_id, properties in brick_library.items():
-        key = (properties['length'], properties['width'])
+        key = (properties['length'], properties['width'], properties['height'])
         if key not in result.keys():
             result[key] = int(brick_id)
     return result
@@ -19,17 +19,17 @@ def _make_dimensions_to_brick_id_dict() -> dict:
 _dimensions_to_brick_id_dict = _make_dimensions_to_brick_id_dict()
 
 
-def dimensions_to_brick_id(h: int, w: int):
-    if h > w:
-        h, w = w, h
+def dimensions_to_brick_id(l: int, w: int, h: int):
+    if l > w:
+        l, w = w, l
     try:
-        return _dimensions_to_brick_id_dict[(h, w)]
+        return _dimensions_to_brick_id_dict[(l, w, h)]
     except KeyError:
-        raise ValueError(f'No brick ID for brick of dimensions: {h}x{w}')
+        raise ValueError(f'No brick ID for brick of dimensions: {l}x{w}x{h}')
 
 
-def brick_id_to_dimensions(brick_id: int) -> (int, int):
-    return brick_library[str(brick_id)]['length'], brick_library[str(brick_id)]['width']
+def brick_id_to_dimensions(brick_id: int) -> (int, int, int):
+    return brick_library[str(brick_id)]['length'], brick_library[str(brick_id)]['width'], brick_library[str(brick_id)]['height']
 
 
 def brick_id_to_part_id(brick_id: int) -> str:
