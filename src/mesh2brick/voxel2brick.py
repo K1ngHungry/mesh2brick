@@ -142,7 +142,7 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             priority: Callable,
             reverse_layer_order: bool = False,
-            allowed_heights: tuple[int, ...] = (3,)
+            allowed_heights: tuple[int, ...] = (3,1)
     ) -> None:
         self._brickify_voxels(voxel_subset, lambda v, z: self._brickify_layer_greedy(v, z, priority, allowed_heights),
                               reverse_layer_order=reverse_layer_order)
@@ -167,7 +167,7 @@ class Voxel2Brick:
         assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
 
     def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable,
-                               allowed_heights: tuple[int, ...] = (3,)) -> None:
+                               allowed_heights: tuple[int, ...] = (3,1)) -> None:
         brick_candidates = []
         for h in allowed_heights:
             brick_candidates.extend([(v['length'], v['width'], v['height']) for v in brick_library.values()
@@ -324,4 +324,4 @@ def voxel2brick(voxels: np.ndarray, **kwargs) -> BrickStructure:
         bricks_by_layer[brick.z].append(brick)
 
     directed_brick_graph = plan_robotic_operation(bricks_by_layer)
-    return BrickStructure.from_json(directed_brick_graph, world_dim=voxels.shape[0])
+    return BrickStructure.from_json(directed_brick_graph, world_dim=voxels.shape)

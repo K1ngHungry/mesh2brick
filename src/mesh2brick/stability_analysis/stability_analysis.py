@@ -11,11 +11,11 @@ from .utils import *
 class StabilityConfig:
     g: float = 9.8
     T: float = 100
-    brick_unit_height: float = 0.0096
+    brick_unit_height: float = 0.0032
     brick_unit_length: float = 0.0078
     visualize: bool = False
     print_log: bool = False
-    world_dimension: tuple[int, int, int] = (20, 20, 20)
+    world_dimension: tuple[int, int, int] = (20, 20, 20) #change
     alpha: float = 0.001
     beta: float = 0.000001
 
@@ -288,7 +288,8 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
                             torque2_pos_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_pos"])
                             torque2_neg_list.append(brick_unit_height / 2 * force_dict[force_key]["top_x_neg"])
                             
-                            if force_dict[force_key]["four_pt_connection"] == 1:
+                            #if force_dict[force_key]["four_pt_connection"] == 1:
+                            if len(force_dict[force_key]["f_up"]) == 4:
                                 torque1_pos_list.append(
                                     (j - center_y - 0.25) * brick_unit_length * force_dict[force_key]["f_up"][0])
                                 torque1_neg_list.append(

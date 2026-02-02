@@ -24,7 +24,7 @@ def normalize_mesh(mesh, x_rotation: float = 90):
 class Mesh2Brick:
     def __init__(
             self,
-            world_dim: tuple[int, int, int] = (20, 20, 20),
+            world_dim: tuple[int, int, int] = (20, 20, 20), #change
             start_grid_shape: tuple[int, int, int] = (128, 128, 128),
             **kwargs,
     ):
@@ -44,10 +44,17 @@ class Mesh2Brick:
 
     def mesh2voxel(self, mesh, x_rotation: float = 90) -> np.ndarray:
         mesh = normalize_mesh(mesh, x_rotation=x_rotation)
-
+        
+        # Scale Z by 3 to compensate for plate height (1 unit) vs brick height (3 units)
+        vertices = np.asarray(mesh.vertices)
+        vertices[:, 2] *= 3.0
+        mesh.vertices = o3d.utility.Vector3dVector(vertices)
+        
         voxel_size = 0
         grid_shape = list(self.start_grid_shape)
-        while max(grid_shape) > max(self.world_dim):
+        while (grid_shape[0] > self.world_dim[0] or 
+               grid_shape[1] > self.world_dim[1] or 
+               grid_shape[2] > self.world_dim[2]):
             voxel_size += 0.01
             voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size)
             voxel_indices = np.asarray(voxel_grid.get_voxels())

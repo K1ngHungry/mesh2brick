@@ -64,7 +64,7 @@ class Brick:
     def to_ldr(self, base_height: float = 0) -> str:
         x = (self.x + self.l * 0.5) * 20
         z = (self.y + self.w * 0.5) * 20
-        y = (self.z + base_height) * -24
+        y = (self.z + base_height) * -8
         matrix = '0 0 1 0 1 0 -1 0 0' if self.ori == 0 else '-1 0 0 0 1 0 0 0 -1'
         line = f'1 115 {x} {y} {z} {matrix} {self.part_id}\n'
         step_line = '0 STEP\n'
@@ -108,7 +108,7 @@ class Brick:
 
                 x = int(x0 / 20 - l * 0.5)
                 y = int(z0 / 20 - w * 0.5)
-                z = int(-y0 / 24)
+                z = int(-y0 / 8)
 
                 return cls(l=l, w=w, h=h, x=x, y=y, z=z)
             case _:
@@ -120,8 +120,11 @@ class BrickStructure:
     Represents a brick structure in the form of a list of bricks.
     """
 
-    def __init__(self, bricks: list[Brick], world_dim: int = 20):
-        self.world_dim = world_dim
+    def __init__(self, bricks: list[Brick], world_dim: int | tuple[int, int, int] = 20):
+        if isinstance(world_dim, int):
+            self.world_dim = (world_dim, world_dim, world_dim)
+        else:
+            self.world_dim = world_dim
 
         # Check if structure starts at ground level
         z0 = min((brick.z for brick in bricks), default=0)
@@ -130,7 +133,7 @@ class BrickStructure:
 
         # Build structure from bricks
         self.bricks = []
-        self.voxel_occupancy = np.zeros((world_dim, world_dim, world_dim), dtype=int)
+        self.voxel_occupancy = np.zeros(self.world_dim, dtype=int)
         for brick in bricks:
             self.add_brick(brick)
 
@@ -167,8 +170,8 @@ class BrickStructure:
         return any(not self.brick_in_bounds(brick) for brick in self.bricks)
 
     def brick_in_bounds(self, brick: Brick) -> bool:
-        return (all(slice_.start >= 0 and slice_.stop <= self.world_dim for slice_ in brick.slice_2d)
-                and 0 <= brick.z < self.world_dim)
+        return (all(slice_.start >= 0 and slice_.stop <= self.world_dim[i] for i, slice_ in enumerate(brick.slice_2d))
+                and 0 <= brick.z < self.world_dim[2])
 
     def has_collisions(self) -> bool:
         return np.any(self.voxel_occupancy > 1)
@@ -184,7 +187,7 @@ class BrickStructure:
             return False  # Supported by ground
         if np.any(self.voxel_occupancy[brick.slice_2d[0], brick.slice_2d[1], brick.z - 1]):
             return False  # Supported from below
-        if brick.z + brick.h < self.world_dim and np.any(
+        if brick.z + brick.h < self.world_dim[2] and np.any(
                 self.voxel_occupancy[brick.slice_2d[0], brick.slice_2d[1], brick.z + brick.h]):
             return False  # Supported from above
         return True
@@ -200,23 +203,23 @@ class BrickStructure:
         if self.has_out_of_bounds_bricks():
             raise ValueError('Cannot compute stability scores - structure has out of bounds bricks.')
         scores, _, _, _, _ = stability_score(self.to_json(), brick_library,
-                                             StabilityConfig(world_dimension=(self.world_dim,) * 3))
+                                             StabilityConfig(world_dimension=self.world_dim))
         return scores
 
     @classmethod
-    def from_json(cls, bricks_json: dict, world_dim: int = 20):
+    def from_json(cls, bricks_json: dict, world_dim: int | tuple[int, int, int] = 20):
         bricks = [Brick.from_json(v) for k, v in bricks_json.items() if k.isdigit()]
         return cls(bricks, world_dim=world_dim)
 
     @classmethod
-    def from_txt(cls, bricks_txt: str, world_dim: int = 20):
+    def from_txt(cls, bricks_txt: str, world_dim: int | tuple[int, int, int] = 20):
         bricks_txt = bricks_txt.split('\n')
         bricks_txt = [b for b in bricks_txt if b.strip()]  # Remove blank lines
         bricks = [Brick.from_txt(brick) for brick in bricks_txt]
         return cls(bricks, world_dim=world_dim)
 
     @classmethod
-    def from_ldr(cls, bricks_ldr: str, world_dim: int = 20):
+    def from_ldr(cls, bricks_ldr: str, world_dim: int | tuple[int, int, int] = 20):
         bricks_ldr = bricks_ldr.split('0 STEP')  # Split on step lines
         bricks_ldr = [b for b in bricks_ldr if b.strip()]  # Remove blank or whitespace-only lines
         bricks = [Brick.from_ldr(brick) for brick in bricks_ldr]
@@ -286,7 +289,7 @@ class ConnectivityBrickStructure:
         return self._node2component
 
     def stability_score(self) -> np.ndarray:
-        bricks = BrickStructure(list(self.bricks.values()), self.max_x)
+        bricks = BrickStructure(list(self.bricks.values()), self.voxel_bricks.shape)
         return bricks.stability_scores()
 
     def node_exists(self, node_id: int):
