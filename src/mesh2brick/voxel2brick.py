@@ -196,7 +196,7 @@ class Voxel2Brick:
 
     def _greedy_priority(self, brick: Brick):
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
-        shorter_side = min(brick.h, brick.w)
+        shorter_side = min(brick.l, brick.w)
         ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** brick.z
         return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.area, ori_priority,
                 brick.x, brick.y, brick.z)
@@ -207,7 +207,7 @@ class Voxel2Brick:
     def _calc_support_ratio(self, brick: Brick) -> float:
         if brick.z == 0:
             return 1.0
-        total_area = brick.h * brick.w
+        total_area = brick.l * brick.w
         supported_area = self.voxels[*brick.slice_2d, brick.z - 1].sum()
         return supported_area / total_area
 
