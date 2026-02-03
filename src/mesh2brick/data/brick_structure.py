@@ -39,6 +39,10 @@ class Brick:
         return self.l * self.w
 
     @property
+    def volume(self) -> int:
+        return self.l * self.w * self.h
+
+    @property
     def slice_2d(self) -> (slice, slice):
         return slice(self.x, self.x + self.l), slice(self.y, self.y + self.w)
 

@@ -198,7 +198,7 @@ class Voxel2Brick:
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
         shorter_side = min(brick.l, brick.w)
         ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** brick.z
-        return (-dangles, -self._count_gaps(brick), -brick.h, -shorter_side, -brick.area, ori_priority,
+        return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.volume, -brick.area, ori_priority,
                 brick.x, brick.y, brick.z)
 
     def _component_priority(self, brick: Brick):
