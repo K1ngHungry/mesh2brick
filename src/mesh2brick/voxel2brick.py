@@ -240,7 +240,7 @@ class Voxel2Brick:
         if brick.z > 0:
             components |= set(np.unique(self.bricks.component_labels()[*brick.slice_2d, brick.z - 1])) - {0}
         if brick.z < self.max_z - 1:
-            components |= set(np.unique(self.bricks.component_labels()[*brick.slice_2d, brick.z + h])) - {0}
+            components |= set(np.unique(self.bricks.component_labels()[*brick.slice_2d, brick.z + brick.h])) - {0}
         return len(components)
 
     def _brickify_layer_merge(self, voxel_subset: np.ndarray, z: int) -> None:
