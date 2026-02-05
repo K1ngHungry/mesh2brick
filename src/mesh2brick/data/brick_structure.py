@@ -39,6 +39,10 @@ class Brick:
         return self.l * self.w
 
     @property
+    def volume(self) -> int:
+        return self.l * self.w * self.h
+
+    @property
     def slice_2d(self) -> (slice, slice):
         return slice(self.x, self.x + self.l), slice(self.y, self.y + self.w)
 
@@ -64,7 +68,7 @@ class Brick:
     def to_ldr(self, base_height: float = 0) -> str:
         x = (self.x + self.l * 0.5) * 20
         z = (self.y + self.w * 0.5) * 20
-        y = (self.z + base_height) * -8
+        y = (self.z + self.h + base_height) * -8
         matrix = '0 0 1 0 1 0 -1 0 0' if self.ori == 0 else '-1 0 0 0 1 0 0 0 -1'
         line = f'1 115 {x} {y} {z} {matrix} {self.part_id}\n'
         step_line = '0 STEP\n'
@@ -108,7 +112,7 @@ class Brick:
 
                 x = int(x0 / 20 - l * 0.5)
                 y = int(z0 / 20 - w * 0.5)
-                z = int(-y0 / 8)
+                z = int(-y0 / 8 - h)
 
                 return cls(l=l, w=w, h=h, x=x, y=y, z=z)
             case _:
