@@ -79,8 +79,11 @@ class Voxel2Brick:
     def __call__(self) -> list[Brick]:
         t_start = time.time()
 
-        # Initialize structure greedily
-        self._brickify_voxels_greedy(self.voxels, self._greedy_priority)
+        # Initialize structure greedily - Pass 1: Height 3 Only, will leave gaps
+        self._brickify_voxels_greedy(self.voxels, self._greedy_priority, allowed_heights=(3,), check_complete=False)
+        
+        # Initialize structure greedily - Pass 2: Fill remaining gaps with Height 3 and 1
+        self._brickify_voxels_greedy(self.voxels, self._greedy_priority, allowed_heights=(3, 1))
         min_components_possible = nx.number_connected_components(self.bricks.neighbor_graph)
 
         # Split and re-merge critical connectivity areas
@@ -142,10 +145,11 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             priority: Callable,
             reverse_layer_order: bool = False,
-            allowed_heights: tuple[int, ...] = (3,1)
+            allowed_heights: tuple[int, ...] = (3,1),
+            check_complete: bool = True
     ) -> None:
         self._brickify_voxels(voxel_subset, lambda v, z: self._brickify_layer_greedy(v, z, priority, allowed_heights),
-                              reverse_layer_order=reverse_layer_order)
+                              reverse_layer_order=reverse_layer_order, check_complete=check_complete)
 
     def _brickify_voxels_merge(self, voxel_subset: np.ndarray, reverse_layer_order: bool = False) -> None:
         self._brickify_voxels(voxel_subset, self._brickify_layer_merge, reverse_layer_order=reverse_layer_order)
@@ -155,6 +159,7 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             layer_brickify_fn: Callable,
             reverse_layer_order: bool = False,
+            check_complete: bool = True
     ) -> None:
         min_z = first_nonzero_idx(voxel_subset.sum(axis=(0, 1)))
         max_z = self.max_z - first_nonzero_idx(voxel_subset.sum(axis=(0, 1))[::-1])
@@ -164,7 +169,8 @@ class Voxel2Brick:
         else:
             for z in range(min_z, max_z):
                 layer_brickify_fn(voxel_subset, z)
-        assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
+        if check_complete:
+            assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
 
     def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable,
                                allowed_heights: tuple[int, ...] = (3,1)) -> None:
@@ -198,7 +204,7 @@ class Voxel2Brick:
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
         shorter_side = min(brick.l, brick.w)
         ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** brick.z
-        return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.volume, -brick.area, ori_priority,
+        return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.area, ori_priority,
                 brick.x, brick.y, brick.z)
 
     def _component_priority(self, brick: Brick):
