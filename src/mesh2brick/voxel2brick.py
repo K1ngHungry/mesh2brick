@@ -203,16 +203,9 @@ class Voxel2Brick:
     def _greedy_priority(self, brick: Brick):
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
         shorter_side = min(brick.l, brick.w)
-        # Alternate orientation every tier (3 z-levels) instead of every z-level,
-        # so h=1 catch-up bricks share orientation with h=3 bricks in the same tier.
-        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** (brick.z // 3)
-        # Prefer bricks whose top aligns with the next tier boundary (multiple of 3).
-        # Penalize overshooting (3), reward exact alignment (0), tolerate undershoot (1-2).
-        tier_top = (brick.z // 3 + 1) * 3
-        brick_top = brick.z + brick.h
-        top_alignment = 3 if brick_top > tier_top else tier_top - brick_top
-        return (-dangles, -self._count_gaps(brick), top_alignment, -shorter_side, -brick.volume, -brick.area,
-                ori_priority, brick.x, brick.y, brick.z)
+        top_alignment, ori_priority = self._tier_alignment(brick)
+        return (-dangles, -self._count_gaps(brick), top_alignment, -shorter_side, 
+                -brick.volume, -brick.area, ori_priority, brick.x, brick.y, brick.z)
 
     def _component_priority(self, brick: Brick):
         return -self._count_connecting_components(brick), -brick.area, self.rng.uniform()
@@ -244,6 +237,16 @@ class Voxel2Brick:
         vert_gap_depths = first_zero_idx(vert_gaps[..., ::-1])
 
         return horz_gap_depths.sum() + vert_gap_depths.sum()
+
+    def _tier_alignment(self, brick: Brick) -> tuple[int, int]:
+        """Returns (top_alignment, ori_priority) for tier-based brick placement.
+        Tiers are height 3. Bricks are penalized for overshooting tier boundaries
+        and alternate orientation every tier."""
+        tier_top = (brick.z // 3 + 1) * 3
+        brick_top = brick.z + brick.h
+        top_alignment = 3 if brick_top > tier_top else tier_top - brick_top
+        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** (brick.z // 3)
+        return top_alignment, ori_priority
 
     def _count_connecting_components(self, brick: Brick) -> int:
         """
