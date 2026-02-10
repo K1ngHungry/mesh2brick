@@ -203,9 +203,16 @@ class Voxel2Brick:
     def _greedy_priority(self, brick: Brick):
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
         shorter_side = min(brick.l, brick.w)
-        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** brick.z
-        return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.area, ori_priority,
-                brick.x, brick.y, brick.z)
+        # Alternate orientation every tier (3 z-levels) instead of every z-level,
+        # so h=1 catch-up bricks share orientation with h=3 bricks in the same tier.
+        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** (brick.z // 3)
+        # Prefer bricks whose top aligns with the next tier boundary (multiple of 3).
+        # Penalize overshooting (3), reward exact alignment (0), tolerate undershoot (1-2).
+        tier_top = (brick.z // 3 + 1) * 3
+        brick_top = brick.z + brick.h
+        top_alignment = 3 if brick_top > tier_top else tier_top - brick_top
+        return (-dangles, -self._count_gaps(brick), top_alignment, -shorter_side, -brick.volume, -brick.area,
+                ori_priority, brick.x, brick.y, brick.z)
 
     def _component_priority(self, brick: Brick):
         return -self._count_connecting_components(brick), -brick.area, self.rng.uniform()
