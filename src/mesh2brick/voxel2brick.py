@@ -79,11 +79,8 @@ class Voxel2Brick:
     def __call__(self) -> list[Brick]:
         t_start = time.time()
 
-        # Initialize structure greedily - Pass 1: Height 3 Only, will leave gaps
-        self._brickify_voxels_greedy(self.voxels, self._greedy_priority, allowed_heights=(3,), check_complete=False)
-        
-        # Initialize structure greedily - Pass 2: Fill remaining gaps with Height 3 and 1
-        self._brickify_voxels_greedy(self.voxels, self._greedy_priority, allowed_heights=(3, 1))
+        # Initialize structure greedily
+        self._brickify_voxels_greedy(self.voxels, self._greedy_priority)
         min_components_possible = nx.number_connected_components(self.bricks.neighbor_graph)
 
         # Split and re-merge critical connectivity areas
@@ -109,10 +106,11 @@ class Voxel2Brick:
                 self.n_failures += 1
 
         # Split and re-merge critical stability areas
-        stability = self.bricks.stability_score()
+        stability, solver_optimal = self.bricks.stability_score()
+        solver_failed = not solver_optimal
         n_components = self.bricks.n_components()
         self.n_failures = 0
-        while self.n_failures < self.max_failures:
+        while solver_optimal and self.n_failures < self.max_failures:
             if stability.max() < 1.0:
                 break
             critical_voxels = self._find_critical_voxels_stability(stability)
@@ -120,7 +118,12 @@ class Voxel2Brick:
             self._brickify_voxels_merge(critical_voxels)
 
             # Are the results better?
-            new_stability = self.bricks.stability_score()
+            new_stability, new_solver_optimal = self.bricks.stability_score()
+            if not new_solver_optimal:
+                solver_failed = True
+                self.bricks.remove_voxel_subset(critical_voxels)
+                self.bricks.add_bricks(removed_bricks)
+                break
             new_n_components = self.bricks.n_components()
             if new_stability.mean() < stability.mean() and new_n_components <= n_components:
                 stability = new_stability
@@ -132,11 +135,13 @@ class Voxel2Brick:
                 self.n_failures += 1
 
         mesh2brick_time = time.time() - t_start
+        solver_flag = ' | Solver: FAILED' if solver_failed else ''
         print(f'Finished in time: {mesh2brick_time:.4f} s | '
               f'# bricks: {len(self.bricks.bricks)} | '
               f'# connected components: {n_components} | '
               f'# min connected components possible: {min_components_possible} | '
-              f'Stability: {stability.max()}')
+              f'Stability: {stability.max()}'
+              f'{solver_flag}')
 
         return list(self.bricks.bricks.values())
 

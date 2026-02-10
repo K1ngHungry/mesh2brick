@@ -491,7 +491,7 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
 
     if model.Status != gp.GRB.Status.OPTIMAL:
         print('Model did not solve successfully. Check status code:', model.Status)
-        return np.ones(world_dim), model.NumVars, model.NumConstrs, total_t, solve_t
+        return np.ones(world_dim), model.NumVars, model.NumConstrs, total_t, solve_t, False
 
     heatmap_color = np.zeros((world_dim[0], world_dim[1], world_dim[2], 3))
     for key in brick_structure.keys():
@@ -546,5 +546,5 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
     num_constr = model.NumConstrs
     model.close()
     analysis_score = heatmap_color[:, :, :, 0]
-    return analysis_score, num_vars, num_constr, total_t, solve_t
+    return analysis_score, num_vars, num_constr, total_t, solve_t, True
 
