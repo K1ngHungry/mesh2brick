@@ -12,13 +12,13 @@ def construct_world_grid(bricks, world_dimension, brick_library):
         else:
             w = brick_library[brick_id]["length"]
             l = brick_library[brick_id]["width"]
-        brick_h = brick_library[brick_id]['height']
+        h = brick_library[brick_id]['height']
         brick_x = brick["x"]
         brick_y = brick["y"]
         brick_z = brick["z"]
         for i in range(brick_x, brick_x + l):
             for j in range(brick_y, brick_y + w):
-                for k in range(brick_z, brick_z + brick_h):
+                for k in range(brick_z, brick_z + h):
                     world_grid[i, j, k] = int(key)
     return world_grid
 
@@ -27,9 +27,9 @@ def gen_key(x, y, z):
     return "X: " + str(x) + ", Y: " + str(y) + ", Z: " + str(z)
 
 
-def out_boundary(pt, brick_x, brick_y, h, w):
+def out_boundary(pt, brick_x, brick_y, l, w):
     x = pt[0]
     y = pt[1]
-    if x < brick_x or x >= brick_x + h or y < brick_y or y >= brick_y + w:
+    if x < brick_x or x >= brick_x + l or y < brick_y or y >= brick_y + w:
         return True
     return False
