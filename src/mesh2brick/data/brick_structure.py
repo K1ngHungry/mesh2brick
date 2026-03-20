@@ -202,13 +202,17 @@ class BrickStructure:
         return self.stability_scores().max() < 1
 
     def stability_scores(self) -> np.ndarray:
+        scores, _ = self.stability_scores_with_status()
+        return scores
+
+    def stability_scores_with_status(self) -> tuple[np.ndarray, bool]:
         if self.has_collisions():
             raise ValueError('Cannot compute stability scores - structure has colliding bricks.')
         if self.has_out_of_bounds_bricks():
             raise ValueError('Cannot compute stability scores - structure has out of bounds bricks.')
-        scores, _, _, _, _ = stability_score(self.to_json(), brick_library,
-                                             StabilityConfig(world_dimension=self.world_dim))
-        return scores
+        scores, _, _, _, _, solver_optimal = stability_score(self.to_json(), brick_library,
+                                                             StabilityConfig(world_dimension=self.world_dim))
+        return scores, solver_optimal
 
     @classmethod
     def from_json(cls, bricks_json: dict, world_dim: int | tuple[int, int, int] = 20):
@@ -292,9 +296,9 @@ class ConnectivityBrickStructure:
                                     for node in component}
         return self._node2component
 
-    def stability_score(self) -> np.ndarray:
+    def stability_score(self) -> tuple[np.ndarray, bool]:
         bricks = BrickStructure(list(self.bricks.values()), self.voxel_bricks.shape)
-        return bricks.stability_scores()
+        return bricks.stability_scores_with_status()
 
     def node_exists(self, node_id: int):
         return node_id in self.bricks

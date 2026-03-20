@@ -106,10 +106,11 @@ class Voxel2Brick:
                 self.n_failures += 1
 
         # Split and re-merge critical stability areas
-        stability = self.bricks.stability_score()
+        stability, solver_optimal = self.bricks.stability_score()
+        solver_failed = not solver_optimal
         n_components = self.bricks.n_components()
         self.n_failures = 0
-        while self.n_failures < self.max_failures:
+        while solver_optimal and self.n_failures < self.max_failures:
             if stability.max() < 1.0:
                 break
             critical_voxels = self._find_critical_voxels_stability(stability)
@@ -117,7 +118,12 @@ class Voxel2Brick:
             self._brickify_voxels_merge(critical_voxels)
 
             # Are the results better?
-            new_stability = self.bricks.stability_score()
+            new_stability, new_solver_optimal = self.bricks.stability_score()
+            if not new_solver_optimal:
+                solver_failed = True
+                self.bricks.remove_voxel_subset(critical_voxels)
+                self.bricks.add_bricks(removed_bricks)
+                break
             new_n_components = self.bricks.n_components()
             if new_stability.mean() < stability.mean() and new_n_components <= n_components:
                 stability = new_stability
@@ -129,11 +135,13 @@ class Voxel2Brick:
                 self.n_failures += 1
 
         mesh2brick_time = time.time() - t_start
+        solver_flag = ' | Solver: FAILED' if solver_failed else ''
         print(f'Finished in time: {mesh2brick_time:.4f} s | '
               f'# bricks: {len(self.bricks.bricks)} | '
               f'# connected components: {n_components} | '
               f'# min connected components possible: {min_components_possible} | '
-              f'Stability: {stability.max()}')
+              f'Stability: {stability.max()}'
+              f'{solver_flag}')
 
         return list(self.bricks.bricks.values())
 
@@ -142,10 +150,11 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             priority: Callable,
             reverse_layer_order: bool = False,
-            allowed_heights: tuple[int, ...] = (3,1)
+            allowed_heights: tuple[int, ...] = (3,1),
+            check_complete: bool = True
     ) -> None:
         self._brickify_voxels(voxel_subset, lambda v, z: self._brickify_layer_greedy(v, z, priority, allowed_heights),
-                              reverse_layer_order=reverse_layer_order)
+                              reverse_layer_order=reverse_layer_order, check_complete=check_complete)
 
     def _brickify_voxels_merge(self, voxel_subset: np.ndarray, reverse_layer_order: bool = False) -> None:
         self._brickify_voxels(voxel_subset, self._brickify_layer_merge, reverse_layer_order=reverse_layer_order)
@@ -155,6 +164,7 @@ class Voxel2Brick:
             voxel_subset: np.ndarray,
             layer_brickify_fn: Callable,
             reverse_layer_order: bool = False,
+            check_complete: bool = True
     ) -> None:
         min_z = first_nonzero_idx(voxel_subset.sum(axis=(0, 1)))
         max_z = self.max_z - first_nonzero_idx(voxel_subset.sum(axis=(0, 1))[::-1])
@@ -164,7 +174,8 @@ class Voxel2Brick:
         else:
             for z in range(min_z, max_z):
                 layer_brickify_fn(voxel_subset, z)
-        assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
+        if check_complete:
+            assert ((self.bricks.voxel_bricks != 0) == (self.voxels != 0)).all()
 
     def _brickify_layer_greedy(self, voxel_subset: np.ndarray, z: int, priority: Callable,
                                allowed_heights: tuple[int, ...] = (3,1)) -> None:
@@ -197,9 +208,9 @@ class Voxel2Brick:
     def _greedy_priority(self, brick: Brick):
         dangles = 1 if 0 < self._calc_support_ratio(brick) < 1 else 0
         shorter_side = min(brick.l, brick.w)
-        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** brick.z
-        return (-dangles, -self._count_gaps(brick), -shorter_side, -brick.area, ori_priority,
-                brick.x, brick.y, brick.z)
+        top_alignment, ori_priority = self._tier_alignment(brick)
+        return (-dangles, -self._count_gaps(brick), top_alignment, -shorter_side,
+                -brick.volume, -brick.area, ori_priority, brick.x, brick.y, brick.z)
 
     def _component_priority(self, brick: Brick):
         return -self._count_connecting_components(brick), -brick.area, self.rng.uniform()
@@ -231,6 +242,16 @@ class Voxel2Brick:
         vert_gap_depths = first_zero_idx(vert_gaps[..., ::-1])
 
         return horz_gap_depths.sum() + vert_gap_depths.sum()
+
+    def _tier_alignment(self, brick: Brick) -> tuple[int, int]:
+        """Returns (top_alignment, ori_priority) for tier-based brick placement.
+        Tiers are height 3. Bricks are penalized for overshooting tier boundaries
+        and alternate orientation every tier."""
+        tier_top = (brick.z // 3 + 1) * 3
+        brick_top = brick.z + brick.h
+        top_alignment = 3 if brick_top > tier_top else tier_top - brick_top
+        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** (brick.z // 3)
+        return top_alignment, ori_priority
 
     def _count_connecting_components(self, brick: Brick) -> int:
         """
