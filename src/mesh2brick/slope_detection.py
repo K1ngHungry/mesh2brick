@@ -239,7 +239,7 @@ def get_slope_bricks() -> list[dict]:
     return slope_bricks
 
 
-def slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = None) -> list[dict]:
+def match_slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = None) -> list[dict]:
     """Match a detected slope angle to the best available slope bricks.
 
     Args:
@@ -263,3 +263,93 @@ def slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = None) 
     matches = [b for b in slope_bricks if abs(b['angle'] - best_angle) < 0.1]
     matches.sort(key=lambda b: b['length'] * b['width'], reverse=True)
     return matches
+
+
+# Backward compatibility alias
+slope_to_bricks = match_slope_to_bricks
+
+
+def _compute_s_min(region: SlopeRegion, slope_bricks: list[dict] | None = None) -> float | None:
+    """Compute the minimum scale to fit at least one slope brick into a region.
+
+    Returns the s_min for the easiest-to-fit (smallest) matching brick,
+    or None if no brick can be matched.
+    """
+    matched = match_slope_to_bricks(region.slope_angle, slope_bricks)
+    if not matched or region.length <= 0 or region.width <= 0:
+        return None
+
+    s_mins = []
+    for brick in matched:
+        s_min_b = max(brick['length'] / region.length,
+                      brick['width'] / region.width)
+        s_mins.append(s_min_b)
+    return min(s_mins)
+
+
+def compute_optimal_scale(
+    regions: list[SlopeRegion],
+    default_scale: float = 20.0,
+    max_scale: float = 40.0,
+) -> tuple[float, list[tuple[SlopeRegion, list[dict]]]]:
+    """Compute the optimal global scale factor for slope brick fitting.
+
+    For each slope region, finds matching slope bricks and computes the
+    minimum scale needed to fit at least one brick. The optimal scale
+    is the maximum of all per-region minimums (to achieve zero energy),
+    clamped between default_scale and max_scale.
+
+    Args:
+        regions: Detected slope regions (in post-normalize_mesh coords).
+        default_scale: Scale to use when no slope regions exist (also the floor).
+        max_scale: Upper bound on scale to prevent huge models.
+
+    Returns:
+        (optimal_scale, assignments) where assignments is a list of
+        (region, matched_bricks) pairs. Regions whose s_min > 2 * optimal_scale
+        are excluded (fallback to cuboid bricks).
+    """
+    if not regions:
+        return default_scale, []
+
+    slope_bricks = get_slope_bricks()
+
+    # For each region, find best matching bricks and compute s_min
+    region_info: list[tuple[SlopeRegion, list[dict], float]] = []
+    for region in regions:
+        s_min = _compute_s_min(region, slope_bricks)
+        if s_min is None:
+            continue
+        matched = match_slope_to_bricks(region.slope_angle, slope_bricks)
+        region_info.append((region, matched, s_min))
+
+    if not region_info:
+        return default_scale, []
+
+    # Optimal scale = max of all s_min values (zero energy), clamped
+    s_star = max(info[2] for info in region_info)
+    s_star = max(s_star, default_scale)
+    s_star = min(s_star, max_scale)
+
+    # Fallback: discard regions where s_star < 0.5 * s_min
+    assignments: list[tuple[SlopeRegion, list[dict]]] = []
+    for region, matched, s_min in region_info:
+        if s_star >= 0.5 * s_min:
+            assignments.append((region, matched))
+
+    return s_star, assignments
+
+
+def compute_energy(scale: float, regions: list[SlopeRegion]) -> float:
+    """Compute total scale energy for a given scale. Lower is better.
+
+    E_scale(s) = sum of max(0, s_min_i - s) for all slope regions.
+    Currently only handles slopes; designed for future cylinder extension.
+    """
+    slope_bricks = get_slope_bricks()
+    total = 0.0
+    for region in regions:
+        s_min = _compute_s_min(region, slope_bricks)
+        if s_min is not None:
+            total += max(0.0, s_min - scale)
+    return total
