@@ -1,0 +1,77 @@
+{
+  "_comment": "length = direction the slope runs along, width = perpendicular dimension",
+  "45": {
+    "0": {
+      "length": 2,
+      "width": 1,
+      "height": 3,
+      "partID": "3040.DAT"
+    },
+    "1": {
+      "length": 2,
+      "width": 2,
+      "height": 3,
+      "partID": "3039.DAT"
+    },
+    "2": {
+      "length": 2,
+      "width": 4,
+      "height": 3,
+      "partID": "3037.DAT"
+    },
+    "3": {
+      "length": 2,
+      "width": 6,
+      "height": 3,
+      "partID": "23949.DAT"
+    },
+    "4": {
+      "length": 2,
+      "width": 1,
+      "height": 2,
+      "partID": "85984.DAT"
+    }
+  },
+  "18": {
+    "10": {
+      "length": 4,
+      "width": 2,
+      "height": 3,
+      "partID": "30363.DAT"
+    },
+    "11": {
+      "length": 6,
+      "width": 2,
+      "height": 3,
+      "partID": "52214.DAT"
+    }
+  },
+  "33": {
+    "20": {
+      "length": 1,
+      "width": 4,
+      "height": 2,
+      "partID": "7835.DAT"
+    },
+    "21": {
+      "length": 1,
+      "width": 2,
+      "height": 2,
+      "partID": "5404.DAT"
+    },
+    "22": {
+      "length": 1,
+      "width": 1,
+      "height": 2,
+      "partID": "18862.DAT"
+    }
+  },
+  "65": {
+    "30": {
+      "length": 2,
+      "width": 1,
+      "height": 3,
+      "partID": "6270.DAT"
+    }
+  }
+}
