@@ -1,0 +1,265 @@
+import math
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+
+import numpy as np
+import open3d as o3d
+
+from mesh2brick.data.brick_library import brick_library
+
+
+@dataclass
+class SlopeRegion:
+    """A connected region of mesh faces sharing a similar sloped normal."""
+    face_indices: list[int]
+    avg_normal: np.ndarray
+    area: float
+    slope_angle: float       # degrees from horizontal
+    slope_direction: int     # 0=+X, 1=+Y, 2=-X, 3=-Y
+    length: float = 0.0      # Horizontal dimension along slope direction
+    width: float = 0.0       
+    height: float = 0.0      
+
+
+def _build_face_adjacency(triangles: np.ndarray, face_indices: set[int]) -> dict[int, list[int]]:
+    """Build adjacency graph for faces sharing an edge, restricted to face_indices."""
+
+    # Map edges (key) to list of faces (value) that contain that edge
+    edge_to_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for f_idx in face_indices:
+        tri = triangles[f_idx]
+        for i, j in [(0, 1), (1, 2), (0, 2)]:
+            edge = (min(tri[i], tri[j]), max(tri[i], tri[j]))
+            edge_to_faces[edge].append(f_idx)
+
+    # Build adjacency list to represent graph of faces sharing an edge
+    adjacency: dict[int, list[int]] = defaultdict(list)
+    for f_indices in edge_to_faces.values():
+        for i in range(len(f_indices)):
+            for j in range(i + 1, len(f_indices)):
+                adjacency[f_indices[i]].append(f_indices[j])
+                adjacency[f_indices[j]].append(f_indices[i])
+    return adjacency
+
+
+def _compute_areas(mesh: o3d.geometry.TriangleMesh) -> np.ndarray:
+    """Compute the area of each triangle in the mesh.
+    Formula: Area = 0.5 * || (v1 - v0) x (v2 - v0) ||
+    where ||...|| is the L2 norm (magnitude) and 'x' is the cross product.
+    """
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.triangles)
+    v0 = vertices[triangles[:, 0]]
+    v1 = vertices[triangles[:, 1]]
+    v2 = vertices[triangles[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)
+    return 0.5 * np.linalg.norm(cross, axis=1)
+
+
+def _normal_angle_diff(n1: np.ndarray, n2: np.ndarray) -> float:
+    """Angle between two unit normals in degrees."""
+    dot = np.clip(np.dot(n1, n2), -1.0, 1.0)
+    return math.degrees(math.acos(abs(dot)))
+
+
+def _to_cardinal(direction: np.ndarray) -> int:
+    """Snap a 2D direction to the nearest cardinal axis.
+    Returns 0=+X, 1=+Y, 2=-X, 3=-Y."""
+    candidates = np.array([[1, 0], [0, 1], [-1, 0], [0, -1]], dtype=float)
+    dots = candidates @ direction
+    return int(np.argmax(dots))
+
+
+def _compute_region_bounds(
+    mesh: o3d.geometry.TriangleMesh,
+    face_indices: list[int],
+    slope_direction: int
+) -> tuple[float, float, float]:
+    """Compute the width, height, and length of a region aligned to the slope direction.
+
+    Args:
+        mesh: The mesh.
+        face_indices: List of face indices in the region.
+        slope_direction: 0=+X, 1=+Y, 2=-X, 3=-Y.
+
+    Returns:
+        (length, width, height)
+        length: Dimension along direction on XY plane.
+        width: Dimension perpendicular to direction on XY plane.
+        height: Dimension along Z axis.
+    """
+    triangles = np.asarray(mesh.triangles)[face_indices]
+    vertex_indices = np.unique(triangles)
+    vertices = np.asarray(mesh.vertices)[vertex_indices]
+
+    if len(vertices) == 0:
+        return 0.0, 0.0, 0.0
+
+    min_bound = vertices.min(axis=0)
+    max_bound = vertices.max(axis=0)
+    ranges = max_bound - min_bound  # [dx, dy, dz]
+
+    height = ranges[2]
+
+    # slope_direction: 0=+X, 1=+Y, 2=-X, 3=-Y
+    if slope_direction == 0 or slope_direction == 2:  # X-aligned slope
+        length = ranges[0]
+        width = ranges[1]
+    else:  # Y-aligned slope
+        length = ranges[1]
+        width = ranges[0]
+
+    return length, width, height
+
+
+def detect_slopes(
+    mesh: o3d.geometry.TriangleMesh,
+    planar_deg_err: float = 10.0,
+    normal_deg_err: float = 15.0,
+    min_area_fraction: float = 0.1,
+) -> list[SlopeRegion]:
+    """Detect sloped surface regions on a mesh.
+
+    Args:
+        mesh: Normalized, Z-scaled Open3D triangle mesh.
+        planar_deg_err: Faces within this angle of horizontal or vertical are excluded.
+        normal_deg_err: Max angular difference for BFS grouping.
+        min_area_fraction: Minimum region area as fraction of total mesh area.
+
+    Returns:
+        List of detected SlopeRegion objects.
+    """
+    mesh.compute_triangle_normals()
+    normals = np.asarray(mesh.triangle_normals)
+    triangles = np.asarray(mesh.triangles)
+
+    if len(triangles) == 0:
+        return []
+
+    face_areas = _compute_areas(mesh)
+    total_area = face_areas.sum()
+    if total_area == 0:
+        return []
+
+    # Filter out planar regions
+    up = np.array([0.0, 0.0, 1.0])
+    cos_angles = np.abs(normals @ up)
+    vert_angle_diff = np.degrees(np.arccos(np.clip(cos_angles, 0, 1)))
+    is_sloped = (vert_angle_diff > planar_deg_err) & (vert_angle_diff < 90 - planar_deg_err)
+    sloped_faces = set(np.where(is_sloped)[0])
+
+    if not sloped_faces:
+        return []
+
+    # Build face adjacency for sloped faces
+    adjacency = _build_face_adjacency(triangles, sloped_faces)
+
+    # BFS group connected faces with similar normals
+    visited: set[int] = set()
+    groups: list[list[int]] = []
+
+    for start_face in sloped_faces:
+        if start_face in visited:
+            continue
+        queue = deque([start_face])
+        visited.add(start_face)
+        group = []
+        while queue:
+            face = queue.popleft()
+            group.append(face)
+            for neighbor in adjacency.get(face, []):
+                if neighbor not in visited:
+                    # only compares to start_face, could potentially get unlucky and not maximize sloped area
+                    if _normal_angle_diff(normals[start_face], normals[neighbor]) < normal_deg_err:
+                        visited.add(neighbor)
+                        queue.append(neighbor)
+        groups.append(group)
+
+    # Filter by area threshold
+    regions: list[SlopeRegion] = []
+    for group in groups:
+        group_areas = face_areas[group]
+        region_area = group_areas.sum()
+        if region_area < min_area_fraction * total_area:
+            continue
+
+        # Compute area-weighted average normal
+        weighted_normals = normals[group] * group_areas[:, np.newaxis]
+        avg_normal = weighted_normals.sum(axis=0)
+        norm = np.linalg.norm(avg_normal)
+        if norm < 1e-10:
+            continue
+        avg_normal /= norm
+
+        # Slope angle from horizontal = angle of the normal from vertical
+        slope_angle = math.degrees(math.acos(min(abs(avg_normal[2]), 1.0)))
+
+        # Slope direction: project normal onto XY plane, snap to cardinal
+        direction = np.array([avg_normal[0], avg_normal[1]])
+        dir_norm = np.linalg.norm(direction)
+        if dir_norm < 1e-10:
+            continue
+        direction /= dir_norm
+        slope_direction = _to_cardinal(direction)
+
+        length, width, height = _compute_region_bounds(mesh, group, slope_direction)
+
+        regions.append(SlopeRegion(
+            face_indices=group,
+            avg_normal=avg_normal,
+            area=region_area,
+            slope_angle=slope_angle,
+            slope_direction=slope_direction,
+            length=length,
+            width=width,
+            height=height,
+        ))
+
+    return regions
+
+
+def get_slope_bricks() -> list[dict]:
+    """Get all slope bricks from the brick library.
+
+    Returns:
+        List of dicts with keys: brick_id, type, length, width, height, angle.
+    """
+    slope_bricks = []
+    for brick_id, props in brick_library.items():
+        if props.get('type') != 2:
+            continue
+        angle = math.degrees(math.atan(props['height'] / props['length']))
+        slope_bricks.append({
+            'brick_id': int(brick_id),
+            'length': props['length'],
+            'width': props['width'],
+            'height': props['height'],
+            'angle': angle,
+        })
+    return slope_bricks
+
+
+def slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = None) -> list[dict]:
+    """Match a detected slope angle to the best available slope bricks.
+
+    Args:
+        slope_angle: Detected angle in degrees from horizontal.
+        slope_bricks: Available slope bricks (from get_slope_bricks()). If None, loads from library.
+
+    Returns:
+        List of matching bricks at the closest available angle, sorted by area (largest first).
+    """
+    if slope_bricks is None:
+        slope_bricks = get_slope_bricks()
+
+    if not slope_bricks:
+        return []
+
+    # Find the unique angles and pick the closest
+    angles = sorted(set(b['angle'] for b in slope_bricks))
+    best_angle = min(angles, key=lambda a: abs(a - slope_angle))
+
+    # Return all bricks at that angle, sorted by area (largest first)
+    matches = [b for b in slope_bricks if abs(b['angle'] - best_angle) < 0.1]
+    matches.sort(key=lambda b: b['length'] * b['width'], reverse=True)
+    return matches
