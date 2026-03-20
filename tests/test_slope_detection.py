@@ -7,6 +7,8 @@ import pytest
 from mesh2brick.data.brick_structure import Brick
 from mesh2brick.slope_detection import (
     SlopeRegion,
+    compute_energy,
+    compute_optimal_scale,
     detect_slopes,
     get_slope_bricks,
     match_slope_to_bricks,
@@ -223,3 +225,100 @@ class TestMatchSlopeToBricks:
         """Empty slope brick list should return empty."""
         matches = match_slope_to_bricks(45.0, slope_bricks=[])
         assert matches == []
+
+
+def _make_region(slope_angle=45.0, length=0.3, width=0.2, direction=0):
+    """Helper to create a SlopeRegion with minimal fields."""
+    return SlopeRegion(
+        face_indices=[0],
+        avg_normal=np.array([0.5, 0.0, 0.5]),
+        area=1.0,
+        slope_angle=slope_angle,
+        slope_direction=direction,
+        length=length,
+        width=width,
+        height=0.1,
+    )
+
+
+class TestComputeOptimalScale:
+    def test_no_regions_returns_default(self):
+        """No slope regions should return the default scale."""
+        scale, assignments = compute_optimal_scale([], default_scale=20.0)
+        assert scale == 20.0
+        assert assignments == []
+
+    def test_single_region_easy(self):
+        """Region with s_min < default_scale should keep default scale."""
+        # 45° matches brick l=2, w=1. s_min = max(2/0.3, 1/0.2) = max(6.67, 5.0) = 6.67
+        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
+        scale, assignments = compute_optimal_scale([region], default_scale=20.0)
+        assert scale == 20.0
+        assert len(assignments) == 1
+
+    def test_region_requires_large_scale(self):
+        """Tiny region should push scale up, capped at max_scale."""
+        # 45° brick l=2, w=1. s_min = max(2/0.05, 1/0.02) = max(40, 50) = 50
+        region = _make_region(slope_angle=45.0, length=0.05, width=0.02)
+        scale, assignments = compute_optimal_scale(
+            [region], default_scale=20.0, max_scale=40.0,
+        )
+        assert scale == 40.0
+
+    def test_fallback_discards_region(self):
+        """Region whose s_min > 2*s_star should be discarded."""
+        r1 = _make_region(slope_angle=45.0, length=0.3, width=0.2)  # s_min ~6.67
+        r2 = _make_region(slope_angle=45.0, length=0.05, width=0.02)  # s_min ~50
+        scale, assignments = compute_optimal_scale(
+            [r1, r2], default_scale=15.0, max_scale=20.0,
+        )
+        assert scale == 20.0
+        # r2 s_min=50, 20 < 0.5*50=25 → discarded
+        assert len(assignments) == 1
+
+    def test_multiple_regions_uses_max_smin(self):
+        """Optimal scale should be max of all s_min values (when within bounds)."""
+        r1 = _make_region(slope_angle=45.0, length=0.5, width=0.5)
+        # 45° brick l=2, w=1. s_min = max(2/0.5, 1/0.5) = max(4, 2) = 4
+        r2 = _make_region(slope_angle=56.0, length=0.2, width=0.2)
+        # 56° matches 56.31° bricks, smallest is l=2, w=1. s_min = max(2/0.2, 1/0.2) = max(10, 5) = 10
+        scale, assignments = compute_optimal_scale(
+            [r1, r2], default_scale=5.0, max_scale=40.0,
+        )
+        assert scale >= 10.0
+        assert len(assignments) == 2
+
+    def test_scale_not_below_default(self):
+        """Scale should never go below default_scale even if all s_min are small."""
+        region = _make_region(slope_angle=45.0, length=1.0, width=1.0)
+        # s_min = max(2/1, 1/1) = 2
+        scale, assignments = compute_optimal_scale(
+            [region], default_scale=20.0, max_scale=40.0,
+        )
+        assert scale == 20.0
+
+
+class TestComputeEnergy:
+    def test_energy_zero_at_sufficient_scale(self):
+        """Energy should be zero when scale >= s_min for all regions."""
+        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
+        # s_min ~6.67, so scale=20 should give zero energy
+        energy = compute_energy(20.0, [region])
+        assert energy == 0.0
+
+    def test_energy_positive_below_smin(self):
+        """Energy should be positive when scale < s_min."""
+        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
+        energy = compute_energy(1.0, [region])
+        assert energy > 0.0
+
+    def test_energy_no_regions(self):
+        """Energy should be zero with no regions."""
+        assert compute_energy(20.0, []) == 0.0
+
+    def test_energy_monotonically_decreasing(self):
+        """Energy should decrease (or stay same) as scale increases."""
+        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
+        energies = [compute_energy(s, [region]) for s in [1.0, 5.0, 10.0, 20.0]]
+        for i in range(len(energies) - 1):
+            assert energies[i] >= energies[i + 1]
