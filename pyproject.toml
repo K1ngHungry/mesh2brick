@@ -13,6 +13,7 @@ dependencies = [
     "networkx",
     "numpy",
     "open3d",
+    "scipy",
 ]
 
 [project.scripts]
