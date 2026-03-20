@@ -147,7 +147,7 @@ class TestDetectSlopes:
 class TestBrickAngleProperty:
     def test_slope_brick_angle(self):
         """Slope brick angle should be atan(h/l) in degrees."""
-        brick = Brick(type=2, l=2, w=1, h=3, rotation=0, x=0, y=0, z=0)
+        brick = Brick(type=1, l=2, w=1, h=3, rotation=0, x=0, y=0, z=0)
         assert brick.angle is not None
         expected = math.degrees(math.atan(3 / 2))  # ~56.3°
         assert abs(brick.angle - expected) < 0.1
@@ -158,19 +158,19 @@ class TestBrickAngleProperty:
         assert brick.angle is None
 
     def test_plate_no_angle(self):
-        """Plate bricks should have angle=None."""
-        brick = Brick(type=1, l=1, w=2, h=1, rotation=0, x=0, y=0, z=0)
+        """Plate bricks (type=0) should have angle=None."""
+        brick = Brick(type=0, l=1, w=2, h=1, rotation=0, x=0, y=0, z=0)
         assert brick.angle is None
 
     def test_45_degree_slope(self):
         """l=2, h=2 slope should be 45°."""
-        brick = Brick(type=2, l=2, w=1, h=2, rotation=0, x=0, y=0, z=0)
+        brick = Brick(type=1, l=2, w=1, h=2, rotation=0, x=0, y=0, z=0)
         assert abs(brick.angle - 45.0) < 0.1
 
 
 class TestGetSlopeBricks:
     def test_returns_only_slopes(self):
-        """get_slope_bricks should only return type=2 bricks."""
+        """get_slope_bricks should only return type=1 bricks."""
         bricks = get_slope_bricks()
         assert len(bricks) > 0
         for b in bricks:

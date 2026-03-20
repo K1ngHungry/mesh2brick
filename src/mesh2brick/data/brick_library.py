@@ -20,7 +20,7 @@ _dimensions_to_brick_id_dict = _make_dimensions_to_brick_id_dict()
 
 
 def dimensions_to_brick_id(brick_type: int, l: int, w: int, h: int):
-    if brick_type != 2 and l > w:
+    if brick_type != 1 and l > w:
         l, w = w, l
     try:
         return _dimensions_to_brick_id_dict[(brick_type, l, w, h)]

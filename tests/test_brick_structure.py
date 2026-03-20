@@ -42,12 +42,12 @@ def test_brick_structure():
 
 def test_slope_brick():
     # 2x2x3 slope (brick_id 201, partID 3039.DAT)
-    brick_txt = 'T2 2x2x3 R0 (0,0,0)\n'
-    brick_json = {'brick_id': 201, 'x': 0, 'y': 0, 'z': 0, 'type': 2, 'rotation': 0}
+    brick_txt = 'T1 2x2x3 R0 (0,0,0)\n'
+    brick_json = {'brick_id': 201, 'x': 0, 'y': 0, 'z': 0, 'type': 1, 'rotation': 0}
 
     for brick in [Brick.from_json(brick_json), Brick.from_txt(brick_txt)]:
         assert brick.brick_id == 201
-        assert brick.type == 2
+        assert brick.type == 1
         assert brick.l == 2
         assert brick.w == 2
         assert brick.h == 3
@@ -58,12 +58,12 @@ def test_slope_brick():
 
 def test_slope_brick_rotated():
     # 2x4x3 slope rotated — must keep brick_id 202, NOT become 205 (4x2 slope)
-    brick_txt = 'T2 2x4x3 R1 (0,0,0)\n'
-    brick_json = {'brick_id': 202, 'x': 0, 'y': 0, 'z': 0, 'type': 2, 'rotation': 1}
+    brick_txt = 'T1 2x4x3 R1 (0,0,0)\n'
+    brick_json = {'brick_id': 202, 'x': 0, 'y': 0, 'z': 0, 'type': 1, 'rotation': 1}
 
     for brick in [Brick.from_json(brick_json), Brick.from_txt(brick_txt)]:
         assert brick.brick_id == 202
-        assert brick.type == 2
+        assert brick.type == 1
         assert brick.l == 2
         assert brick.w == 4
         assert brick.rotation == 1
@@ -75,7 +75,7 @@ def test_slope_roundtrip_ldr():
     # 2x2x3 slope: x_center=1*20=20, z_center=1*20=20, y=-(3)*8=-24
     brick_ldr = '1 15 20.0 -24 20.0 1 0 0 0 1 0 0 0 1 3039.DAT'
     brick = Brick.from_ldr(brick_ldr)
-    assert brick.type == 2
+    assert brick.type == 1
     assert brick.brick_id == 201
     assert brick.rotation == 0
     assert brick.x == 0
@@ -86,11 +86,11 @@ def test_slope_roundtrip_ldr():
 
 def test_slope_structure():
     # Slope on top of a regular brick
-    bricks_txt = 'T0 2x2x3 R0 (0,0,0)\nT2 2x2x3 R0 (0,0,3)\n'
+    bricks_txt = 'T0 2x2x3 R0 (0,0,0)\nT1 2x2x3 R0 (0,0,3)\n'
     bricks = BrickStructure.from_txt(bricks_txt)
     assert len(bricks) == 2
     assert bricks.bricks[0].type == 0
-    assert bricks.bricks[1].type == 2
+    assert bricks.bricks[1].type == 1
     assert not bricks.has_collisions()
     assert not bricks.has_floating_bricks()
 

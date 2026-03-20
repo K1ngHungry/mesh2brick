@@ -181,18 +181,22 @@ class Voxel2Brick:
                                allowed_heights: tuple[int, ...] = (3,1)) -> None:
         brick_candidates = []
         for h in allowed_heights:
-            brick_candidates.extend([(v['length'], v['width'], v['height']) for v in brick_library.values()
-                                     if v['height'] == h])
-            brick_candidates.extend([(v['width'], v['length'], v['height']) for v in brick_library.values()
-                                     if v['length'] != v['width'] and v['height'] == h])
+            # Library order (l <= w) -> rotation=0
+            brick_candidates.extend([(v.get('type', 0), v['length'], v['width'], v['height'], 0)
+                                     for v in brick_library.values()
+                                     if v['height'] == h and v.get('type', 0) != 1])
+            # Swapped (l > w) -> rotation=1
+            brick_candidates.extend([(v.get('type', 0), v['width'], v['length'], v['height'], 1)
+                                     for v in brick_library.values()
+                                     if v['length'] != v['width'] and v['height'] == h and v.get('type', 0) != 1])
 
         # Enumerate possible brick placements
         min_x = first_nonzero_idx(voxel_subset[..., z].sum(axis=1))
         max_x = self.max_x - first_nonzero_idx(voxel_subset[..., z].sum(axis=1)[::-1])
         min_y = first_nonzero_idx(voxel_subset[..., z].sum(axis=0))
         max_y = self.max_y - first_nonzero_idx(voxel_subset[..., z].sum(axis=0)[::-1])
-        all_brick_placements = [Brick(l=l, w=w, h=h, x=x, y=y, z=z)
-                                for l, w, h in brick_candidates
+        all_brick_placements = [Brick(type=t, l=l, w=w, h=h, rotation=r, x=x, y=y, z=z)
+                                for t, l, w, h, r in brick_candidates
                                 for x in range(min_x, max_x - l + 1) for y in range(min_y, max_y - w + 1)]
 
         # Filter out bricks that are not completely contained within the voxels
@@ -250,7 +254,7 @@ class Voxel2Brick:
         tier_top = (brick.z // 3 + 1) * 3
         brick_top = brick.z + brick.h
         top_alignment = 3 if brick_top > tier_top else tier_top - brick_top
-        ori_priority = (-1 if brick.ori == 0 else 1) * (-1) ** (brick.z // 3)
+        ori_priority = (-1 if brick.rotation % 2 == 0 else 1) * (-1) ** (brick.z // 3)
         return top_alignment, ori_priority
 
     def _count_connecting_components(self, brick: Brick) -> int:

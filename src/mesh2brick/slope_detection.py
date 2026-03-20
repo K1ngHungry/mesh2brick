@@ -189,7 +189,7 @@ def get_slope_bricks() -> list[dict]:
     """
     slope_bricks = []
     for brick_id, props in brick_library.items():
-        if props.get('type') != 2:
+        if props.get('type') != 1:
             continue
         angle = math.degrees(math.atan(props['height'] / props['length']))
         slope_bricks.append({

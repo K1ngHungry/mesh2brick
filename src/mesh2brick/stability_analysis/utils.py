@@ -6,7 +6,7 @@ def construct_world_grid(bricks, world_dimension, brick_library):
     for key in bricks.keys():
         brick = bricks[key]
         brick_id = str(brick["brick_id"])
-        if brick["ori"] == 0:
+        if brick["rotation"] % 2 == 0:
             l = brick_library[brick_id]["length"]
             w = brick_library[brick_id]["width"]
         else:

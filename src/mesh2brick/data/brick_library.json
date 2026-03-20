@@ -70,9 +70,9 @@
     "mass": 0.00115,
     "inventory": 100000,
     "partID": "3003.DAT"
-  }, 
+  },
   "100": {
-    "type": 1,
+    "type": 0,
     "length": 2,
     "width": 4,
     "height": 1,
@@ -81,7 +81,7 @@
     "partID": "3020.DAT"
   },
   "101": {
-    "type": 1,
+    "type": 0,
     "length": 2,
     "width": 6,
     "height": 1,
@@ -90,7 +90,7 @@
     "partID": "3795.DAT"
   },
   "102": {
-    "type": 1,
+    "type": 0,
     "length": 1,
     "width": 8,
     "height": 1,
@@ -99,7 +99,7 @@
     "partID": "3460.DAT"
   },
   "103": {
-    "type": 1,
+    "type": 0,
     "length": 1,
     "width": 4,
     "height": 1,
@@ -108,7 +108,7 @@
     "partID": "3710.DAT"
   },
   "104": {
-    "type": 1,
+    "type": 0,
     "length": 1,
     "width": 6,
     "height": 1,
@@ -117,7 +117,7 @@
     "partID": "3666.DAT"
   },
   "105": {
-    "type": 1,
+    "type": 0,
     "length": 1,
     "width": 2,
     "height": 1,
@@ -126,7 +126,7 @@
     "partID": "3023b.DAT"
   },
   "106": {
-    "type": 1,
+    "type": 0,
     "length": 1,
     "width": 1,
     "height": 1,
@@ -135,7 +135,7 @@
     "partID": "3024.DAT"
   },
   "107": {
-    "type": 1,
+    "type": 0,
     "length": 2,
     "width": 2,
     "height": 1,
@@ -144,7 +144,7 @@
     "partID": "3022.DAT"
   },
   "200": {
-    "type": 2,
+    "type": 1,
     "length": 2,
     "width": 1,
     "height": 3,
@@ -153,7 +153,7 @@
     "partID": "3040b.DAT"
   },
   "201": {
-    "type": 2,
+    "type": 1,
     "length": 2,
     "width": 2,
     "height": 3,
@@ -162,7 +162,7 @@
     "partID": "3039.DAT"
   },
   "202": {
-    "type": 2,
+    "type": 1,
     "length": 2,
     "width": 4,
     "height": 3,
@@ -171,7 +171,7 @@
     "partID": "3037.DAT"
   },
   "203": {
-    "type": 2,
+    "type": 1,
     "length": 2,
     "width": 6,
     "height": 3,
@@ -180,7 +180,7 @@
     "partID": "23949.DAT"
   },
   "204": {
-    "type": 2,
+    "type": 1,
     "length": 2,
     "width": 1,
     "height": 2,
@@ -189,7 +189,7 @@
     "partID": "85984.DAT"
   },
   "205": {
-    "type": 2,
+    "type": 1,
     "length": 4,
     "width": 2,
     "height": 3,
@@ -198,7 +198,7 @@
     "partID": "30363.DAT"
   },
   "206": {
-    "type": 2,
+    "type": 1,
     "length": 6,
     "width": 2,
     "height": 3,
@@ -207,7 +207,7 @@
     "partID": "52214.DAT"
   },
   "207": {
-    "type": 2,
+    "type": 1,
     "length": 1,
     "width": 4,
     "height": 2,
@@ -216,7 +216,7 @@
     "partID": "7835.DAT"
   },
   "208": {
-    "type": 2,
+    "type": 1,
     "length": 1,
     "width": 2,
     "height": 2,
@@ -225,7 +225,7 @@
     "partID": "5404.DAT"
   },
   "209": {
-    "type": 2,
+    "type": 1,
     "length": 1,
     "width": 1,
     "height": 2,

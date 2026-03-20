@@ -1,3 +1,4 @@
+import math
 import re
 import warnings
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ import networkx as nx
 import numpy as np
 
 from mesh2brick.data.brick_library import (brick_library, dimensions_to_brick_id, brick_id_to_dimensions,
-                                           brick_id_to_part_id, part_id_to_brick_id)
+                                           brick_id_to_part_id, part_id_to_brick_id, brick_id_to_type)
 from mesh2brick.stability_analysis.stability_analysis import StabilityConfig, stability_score
 
 
@@ -15,24 +16,29 @@ class Brick:
     """
     Represents a 1-unit-tall rectangular brick.
     """
+    type: int = 0  # 0=Brick/Plate, 1=Slope
     l: int
     w: int
     h: int = 3
+    rotation: int = 0  # 0-3
     x: int
     y: int
     z: int
 
     @property
     def brick_id(self) -> int:
-        return dimensions_to_brick_id(self.l, self.w, self.h)
+        return dimensions_to_brick_id(self.type, self.l, self.w, self.h)
 
     @property
     def part_id(self) -> str:
         return brick_id_to_part_id(self.brick_id)
 
     @property
-    def ori(self) -> int:
-        return 1 if self.l > self.w else 0
+    def angle(self) -> float | None:
+        """Slope angle in degrees (atan(h/l)), or None for non-slope bricks."""
+        if self.type != 1:
+            return None
+        return math.degrees(math.atan(self.h / self.l))
 
     @property
     def area(self) -> int:
@@ -59,38 +65,49 @@ class Brick:
             'x': self.x,
             'y': self.y,
             'z': self.z,
-            'ori': self.ori,
+            'type': self.type,
+            'rotation': self.rotation,
         }
 
     def to_txt(self) -> str:
-        return f'{self.l}x{self.w}x{self.h} ({self.x},{self.y},{self.z})\n'
+        return f'T{self.type} {self.l}x{self.w}x{self.h} R{self.rotation} ({self.x},{self.y},{self.z})\n'
 
     def to_ldr(self, base_height: float = 0) -> str:
         x = (self.x + self.l * 0.5) * 20
         z = (self.y + self.w * 0.5) * 20
         y = (self.z + self.h + base_height) * -8
-        matrix = '0 0 1 0 1 0 -1 0 0' if self.ori == 0 else '-1 0 0 0 1 0 0 0 -1'
+        matrices = [
+            '0 0 1 0 1 0 -1 0 0',      # R0 (270 deg) — was ori=0
+            '-1 0 0 0 1 0 0 0 -1',     # R1 (180 deg) — was ori=1
+            '0 0 -1 0 1 0 1 0 0',      # R2 (90 deg)
+            '1 0 0 0 1 0 0 0 1'        # R3 (0 deg / identity)
+        ]
+        matrix = matrices[self.rotation % 4]
         line = f'1 115 {x} {y} {z} {matrix} {self.part_id}\n'
         step_line = '0 STEP\n'
         return line + step_line
 
     @classmethod
     def from_json(cls, brick_json: dict):
+        brick_type = brick_id_to_type(brick_json['brick_id'])
         l, w, h = brick_id_to_dimensions(brick_json['brick_id'])
-        if brick_json['ori'] == 1:
+        rotation = brick_json['rotation']
+        if rotation % 2 == 1:
             l, w = w, l
         x, y, z = brick_json['x'], brick_json['y'], brick_json['z']
-        return cls(l=l, w=w, h=h, x=x, y=y, z=z)
+        return cls(type=brick_type, l=l, w=w, h=h, rotation=rotation, x=x, y=y, z=z)
 
     @classmethod
     def from_txt(cls, brick_txt: str):
         brick_txt = brick_txt.strip()
-        match = re.fullmatch(r'(\d+)x(\d+)x(\d+) \((\d+),(\d+),(\d+)\)', brick_txt)
+        match = re.fullmatch(r'T(\d+) (\d+)x(\d+)x(\d+) R(\d+) \((\d+),(\d+),(\d+)\)', brick_txt)
         if match is None:
             raise ValueError(f'Text Format brick is ill-formatted: {brick_txt}')
-
-        l, w, h, x, y, z = map(int, match.group(1, 2, 3, 4, 5, 6))
-        return cls(l=l, w=w, h=h, x=x, y=y, z=z)
+        brick_type = int(match.group(1))
+        l, w, h = map(int, match.group(2, 3, 4))
+        rotation = int(match.group(5))
+        x, y, z = map(int, match.group(6, 7, 8))
+        return cls(type=brick_type, l=l, w=w, h=h, rotation=rotation, x=x, y=y, z=z)
 
     @classmethod
     def from_ldr(cls, brick_ldr: str):
@@ -100,21 +117,26 @@ class Brick:
                 x0, y0, z0 = map(float, (x0, y0, z0))
                 matrix_str = ' '.join(matrix)
                 if matrix_str == '0 0 1 0 1 0 -1 0 0':
-                    ori = 0
+                    rotation = 0
                 elif matrix_str == '-1 0 0 0 1 0 0 0 -1':
-                    ori = 1
+                    rotation = 1
+                elif matrix_str == '0 0 -1 0 1 0 1 0 0':
+                    rotation = 2
+                elif matrix_str == '1 0 0 0 1 0 0 0 1':
+                    rotation = 3
                 else:
                     raise ValueError(f'Invalid transformation matrix: {matrix_str}')
 
                 l, w, h = brick_id_to_dimensions(part_id_to_brick_id(part_id))
-                if ori == 1:
+                brick_type = brick_id_to_type(part_id_to_brick_id(part_id))
+                if rotation % 2 == 1:
                     l, w = w, l
 
                 x = int(x0 / 20 - l * 0.5)
                 y = int(z0 / 20 - w * 0.5)
                 z = int(-y0 / 8 - h)
 
-                return cls(l=l, w=w, h=h, x=x, y=y, z=z)
+                return cls(type=brick_type, l=l, w=w, h=h, rotation=rotation, x=x, y=y, z=z)
             case _:
                 raise ValueError(f"LDR format is ill-formatted: {brick_ldr}")
 

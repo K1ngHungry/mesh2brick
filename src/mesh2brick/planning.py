@@ -36,6 +36,6 @@ def plan_robotic_operation(brick_graph: dict[int, list[Brick]]):
                                                  'x': brick.x,
                                                  'y': brick.y,
                                                  'z': brick.z,
-                                                 'ori': brick.ori}
+                                                 'rotation': brick.rotation}
             seq_num += 1
     return directed_brick_graph
