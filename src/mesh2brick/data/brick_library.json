@@ -150,7 +150,7 @@
     "height": 3,
     "mass": 0.00081,
     "inventory": 100000,
-    "partID": "3040.DAT"
+    "partID": "3040b.DAT"
   },
   "201": {
     "type": 2,
@@ -232,14 +232,5 @@
     "mass": 0.0002,
     "inventory": 100000,
     "partID": "18862.DAT"
-  },
-  "210": {
-    "type": 2,
-    "length": 2,
-    "width": 1,
-    "height": 3,
-    "mass": 0.00081,
-    "inventory": 100000,
-    "partID": "6270.DAT"
   }
 }
