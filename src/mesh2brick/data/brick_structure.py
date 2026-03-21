@@ -197,7 +197,7 @@ class BrickStructure:
 
     def brick_in_bounds(self, brick: Brick) -> bool:
         return (all(slice_.start >= 0 and slice_.stop <= self.world_dim[i] for i, slice_ in enumerate(brick.slice_2d))
-                and 0 <= brick.z < self.world_dim[2])
+                and 0 <= brick.z and brick.z + brick.h <= self.world_dim[2])
 
     def has_collisions(self) -> bool:
         return np.any(self.voxel_occupancy > 1)
@@ -232,12 +232,8 @@ class BrickStructure:
             raise ValueError('Cannot compute stability scores - structure has colliding bricks.')
         if self.has_out_of_bounds_bricks():
             raise ValueError('Cannot compute stability scores - structure has out of bounds bricks.')
-        try:
-            scores, _, _, _, _, solver_optimal = stability_score(self.to_json(), brick_library,
+        scores, _, _, _, _, solver_optimal = stability_score(self.to_json(), brick_library,
                                                                  StabilityConfig(world_dimension=self.world_dim))
-        except KeyError:
-            # Stability solver has a bug with non-cubic world dimensions
-            return np.ones(len(self.bricks)), False
         return scores, solver_optimal
 
     @classmethod

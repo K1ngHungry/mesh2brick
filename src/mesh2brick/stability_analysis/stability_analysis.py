@@ -86,7 +86,7 @@ def stability_score(brick_structure, brick_library, cfg=StabilityConfig()):
             four_pt_connections = 1
         else:
             four_pt_connections = 0
-            
+
         for x in range(brick_x, brick_x + l):
             for y in range(brick_y, brick_y + w):
                 for z_offset in range(h):

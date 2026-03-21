@@ -43,13 +43,15 @@ def get_merged_brick(b1: Brick, b2: Brick) -> Brick | None:
         new_l, new_w = b1.l, b1.w + b2.w
         if valid_brick(new_l, new_w, b1.h):
             new_x, new_y = b1.x, min(b1.y, b2.y)
-            return Brick(l=new_l, w=new_w, h=b1.h, x=new_x, y=new_y, z=b1.z)
+            rotation = 1 if new_l > new_w else 0
+            return Brick(l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
 
     elif b1.y == b2.y and b1.w == b2.w and b1.h == b2.h and (b1.x + b1.l == b2.x or b2.x + b2.l == b1.x):
         new_l, new_w = b1.l + b2.l, b1.w
         if valid_brick(new_l, new_w, b1.h):
             new_x, new_y = min(b1.x, b2.x), b1.y
-            return Brick(l=new_l, w=new_w, h=b1.h, x=new_x, y=new_y, z=b1.z)
+            rotation = 1 if new_l > new_w else 0
+            return Brick(l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
 
     return None
 
