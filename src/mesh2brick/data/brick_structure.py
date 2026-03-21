@@ -85,13 +85,20 @@ class Brick:
 
     def to_ldr(self, base_height: float = 0) -> str:
         if self.type == 1:
-            # Slope run (l) maps to LDR Z (our Y) for even rotation,
-            # and to LDR X (our X) for odd rotation.
-            if self.rotation % 2 == 0:
+            # Slope run (l) maps to LDR Z (our Y) for EVEN rotation,
+            # and to LDR X (our X) for ODD rotation.
+            # Origin is aligned to top studs natively, not geometric centroid.
+            if self.rotation == 0:
                 x = (self.x + self.w * 0.5) * 20
-                z = (self.y + self.l * 0.5) * 20
-            else:
-                x = (self.x + self.l * 0.5) * 20
+                z = (self.y + self.l) * 20 - 10
+            elif self.rotation == 2:
+                x = (self.x + self.w * 0.5) * 20
+                z = self.y * 20 + 10
+            elif self.rotation == 1:
+                x = self.x * 20 + 10
+                z = (self.y + self.w * 0.5) * 20
+            elif self.rotation == 3:
+                x = (self.x + self.l) * 20 - 10
                 z = (self.y + self.w * 0.5) * 20
         else:
             x = (self.x + self.l * 0.5) * 20

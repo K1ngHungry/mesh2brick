@@ -78,8 +78,8 @@ def _compute_region_bounds(
 def detect_slopes(
     mesh: o3d.geometry.TriangleMesh,
     planar_deg_err: float = 10.0,
-    normal_deg_err: float = 15.0,
-    min_area_fraction: float = 0.1,
+    normal_deg_err: float = 10.0,
+    min_area_fraction: float = 0.05,
 ) -> list[SlopeRegion]:
     """Detect sloped surface regions on a mesh.
 
@@ -278,12 +278,12 @@ def compute_optimal_scale(
         max_scale: Upper bound on scale to prevent huge models.
 
     Returns:
-        (optimal_scale, assignments) where assignments is a list of
-        (region, matched_bricks) pairs. Regions whose s_min > 2 * optimal_scale
-        are excluded (fallback to cuboid bricks).
+        (optimal_scale, assignments, irregular_assignments) where assignments is a list of
+        (region, matched_bricks) pairs that are rectangular enough for rigid scaling. 
+        Regions whose s_min > 2 * optimal_scale are excluded.
     """
     if not regions:
-        return default_scale, []
+        return default_scale, [], []
 
     slope_bricks = get_slope_bricks()
 
@@ -321,11 +321,21 @@ def compute_optimal_scale(
 
     # Fallback: discard regions where s_star < 0.5 * s_min
     assignments: list[tuple[SlopeRegion, list[dict]]] = []
+    irregular_assignments: list[tuple[SlopeRegion, list[dict]]] = []
+    
     for region, matched, s_min in region_info:
         if s_star >= 0.5 * s_min:
-            assignments.append((region, matched))
+            # Rectangularity check: Compare the actual projected 3D area to its 2D bounding box
+            projected_area = region.area * abs(math.cos(math.radians(region.slope_angle)))
+            bbox_area = region.length * region.width
+            rectangularity = projected_area / bbox_area if bbox_area > 0 else 0.0
+            
+            if rectangularity >= 0.8:
+                assignments.append((region, matched))
+            else:
+                irregular_assignments.append((region, matched))
 
-    return s_star, assignments
+    return s_star, assignments, irregular_assignments
 
 
 def compute_energy(scale: float, regions: list[SlopeRegion]) -> float:

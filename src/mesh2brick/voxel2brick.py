@@ -38,20 +38,30 @@ def valid_brick(l: int, w: int, h: int, brick_type: int = 0) -> bool:
 
 def get_merged_brick(b1: Brick, b2: Brick) -> Brick | None:
     assert b1.z == b2.z
+    if b1.type != b2.type:
+        return None
 
     if b1.x == b2.x and b1.l == b2.l and b1.h == b2.h and (b1.y + b1.w == b2.y or b2.y + b2.w == b1.y):
         new_l, new_w = b1.l, b1.w + b2.w
-        if valid_brick(new_l, new_w, b1.h):
+        if valid_brick(new_l, new_w, b1.h, brick_type=b1.type):
             new_x, new_y = b1.x, min(b1.y, b2.y)
-            rotation = 1 if new_l > new_w else 0
-            return Brick(l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
+            if b1.type == 0:
+                rotation = 1 if new_l > new_w else 0
+            else:
+                rotation = b1.rotation
+            return Brick(type=b1.type, l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
 
     elif b1.y == b2.y and b1.w == b2.w and b1.h == b2.h and (b1.x + b1.l == b2.x or b2.x + b2.l == b1.x):
+        if b1.type == 1:
+            return None  # Cannot merge slope bricks along their run dimension
         new_l, new_w = b1.l + b2.l, b1.w
-        if valid_brick(new_l, new_w, b1.h):
+        if valid_brick(new_l, new_w, b1.h, brick_type=b1.type):
             new_x, new_y = min(b1.x, b2.x), b1.y
-            rotation = 1 if new_l > new_w else 0
-            return Brick(l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
+            if b1.type == 0:
+                rotation = 1 if new_l > new_w else 0
+            else:
+                rotation = b1.rotation
+            return Brick(type=b1.type, l=new_l, w=new_w, h=b1.h, rotation=rotation, x=new_x, y=new_y, z=b1.z)
 
     return None
 

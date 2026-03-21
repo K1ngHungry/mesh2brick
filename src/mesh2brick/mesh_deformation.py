@@ -299,7 +299,12 @@ def _resize_region(
     ]:
         if region_dims[axis] > 0:
             brick_dim = brick[brick_dim_key]
-            target_dim = math.ceil(region_dims[axis] / brick_dim) * brick_dim
+            if axis == height_axis:
+                # height_axis is in isotropic units, so the brick_dim conceptually should be 1/3 of its plate height
+                brick_dim_iso = brick_dim / 3.0
+                target_dim = max(1, round(region_dims[axis] / brick_dim_iso)) * brick_dim_iso
+            else:
+                target_dim = max(1, round(region_dims[axis] / brick_dim)) * brick_dim
             scale_factors[axis] = target_dim / region_dims[axis]
 
     for vi in vert_indices:
