@@ -28,9 +28,9 @@ def k_ring_neighbors(node, k: int, graph: nx.Graph) -> list:
     return list(shortest_paths.keys())
 
 
-def valid_brick(l: int, w: int, h: int) -> bool:
+def valid_brick(l: int, w: int, h: int, brick_type: int = 0) -> bool:
     try:
-        dimensions_to_brick_id(l, w, h)
+        dimensions_to_brick_id(brick_type, l, w, h)
         return True
     except ValueError:
         return False

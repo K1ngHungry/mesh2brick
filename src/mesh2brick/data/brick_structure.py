@@ -232,8 +232,12 @@ class BrickStructure:
             raise ValueError('Cannot compute stability scores - structure has colliding bricks.')
         if self.has_out_of_bounds_bricks():
             raise ValueError('Cannot compute stability scores - structure has out of bounds bricks.')
-        scores, _, _, _, _, solver_optimal = stability_score(self.to_json(), brick_library,
-                                                             StabilityConfig(world_dimension=self.world_dim))
+        try:
+            scores, _, _, _, _, solver_optimal = stability_score(self.to_json(), brick_library,
+                                                                 StabilityConfig(world_dimension=self.world_dim))
+        except KeyError:
+            # Stability solver has a bug with non-cubic world dimensions
+            return np.ones(len(self.bricks)), False
         return scores, solver_optimal
 
     @classmethod

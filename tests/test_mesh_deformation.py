@@ -7,7 +7,7 @@ import pytest
 
 from mesh2brick.mesh_deformation import (
     DeformationResult,
-    FlatPlane,
+    Plane,
     SplitVertex,
     apply_scale,
     deform_mesh,
@@ -156,7 +156,7 @@ class TestResizeSlopeRegions:
         bricks = match_slope_to_bricks(regions[0].slope_angle)
         assignments = [(regions[0], bricks)]
 
-        target_pos, splits, region_verts = resize_slope_regions(scaled, assignments)
+        target_pos, splits, region_verts, _ = resize_slope_regions(scaled, assignments)
 
         # Check that the resized region has brick-multiple dimensions
         region = regions[0]
@@ -189,7 +189,7 @@ class TestResizeSlopeRegions:
         bricks = match_slope_to_bricks(regions[0].slope_angle)
         assignments = [(regions[0], bricks)]
 
-        _, splits, _ = resize_slope_regions(scaled, assignments)
+        _, splits, _, _ = resize_slope_regions(scaled, assignments)
         # Ramp has shared vertices between slope face and non-slope faces
         assert len(splits) >= 1
         # Each split vertex should have a valid region_index
@@ -199,7 +199,7 @@ class TestResizeSlopeRegions:
     def test_no_assignments_no_changes(self):
         mesh = _make_box()
         orig_verts = np.asarray(mesh.vertices).copy()
-        target, splits, region_verts = resize_slope_regions(mesh, [])
+        target, splits, region_verts, _ = resize_slope_regions(mesh, [])
         np.testing.assert_allclose(target, orig_verts)
         assert splits == []
         assert region_verts == []
@@ -213,7 +213,7 @@ class TestResizeSlopeRegions:
         bricks = match_slope_to_bricks(regions[0].slope_angle)
         assignments = [(regions[0], bricks)]
 
-        _, _, region_verts = resize_slope_regions(scaled, assignments)
+        _, _, region_verts, _ = resize_slope_regions(scaled, assignments)
         assert len(region_verts) == 1  # one region
         assert len(region_verts[0]) > 0  # has vertices
 
@@ -284,7 +284,7 @@ class TestDeformMesh:
             pytest.skip("No assignments")
 
         # Get resized positions before optimization
-        resized, _, region_vert_indices = resize_slope_regions(scaled, assignments)
+        resized, _, region_vert_indices, _ = resize_slope_regions(scaled, assignments)
 
         result = deform_mesh(ramp, scale=10.0, assignments=assignments, max_iter=200)
 

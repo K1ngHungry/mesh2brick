@@ -5,16 +5,13 @@ coordinates with dimensions that are exact multiples of slope brick sizes.
 """
 import copy
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import open3d as o3d
 from scipy.optimize import minimize
 
-from mesh2brick.slope_detection import (
-    SlopeRegion,
-    match_slope_to_bricks,
-)
+from mesh2brick.slope_detection import SlopeRegion
 from mesh2brick.mesh_utils import (
     build_face_adjacency,
     normal_angle_diff,
@@ -66,7 +63,6 @@ def apply_scale(
     vertices *= scale
     new_mesh.vertices = o3d.utility.Vector3dVector(vertices)
     return new_mesh
-
 
 
 # 6 axis directions to check for flat planes
@@ -189,21 +185,34 @@ def detect_planes(
 
 def _classify_vertices(
     faces: np.ndarray,
+    vertices: np.ndarray,
     assignments: list[tuple[SlopeRegion, list[dict]]],
-) -> tuple[list[np.ndarray], list[int], dict[int, int]]:
+    position_tol: float = 1e-6,
+) -> tuple[list[np.ndarray], list[int], dict[int, int], dict[int, int]]:
     """Partition vertices into slope regions and identify split vertices.
 
-    A *split vertex* is one shared between slope-region faces and non-slope faces
+    A *split vertex* is one shared between slope-region faces and non-slope
+    faces.  Sharing is detected both by index (same vertex used in both)
+    and by position (GLB meshes often duplicate vertices at boundaries with
+    different normals/UVs — these are "positional splits").
+
+    For each positional split on the non-slope side, we record a mapping
+    to its coincident slope-side vertex so that ``resize_slope_regions``
+    and ``optimize_vertices`` can keep them in sync.
 
     Args:
         faces: (F, 3) triangle index array.
+        vertices: (N, 3) vertex positions.
         assignments: (region, matched_bricks) pairs.
+        position_tol: Max distance to consider two vertices coincident.
 
     Returns:
-        (region_vert_indices, split_indices, vert_to_region):
+        (region_vert_indices, split_indices, vert_to_region, coincident_map):
         - region_vert_indices: unique vertex indices per region.
         - split_indices: sorted vertex indices shared between slope/non-slope.
         - vert_to_region: maps each slope vertex to its first owning region.
+        - coincident_map: maps non-slope vertex index → slope vertex index
+          for positional duplicates at the slope/non-slope boundary.
     """
     slope_faces: set[int] = set()
     for region, _bricks in assignments:
@@ -222,7 +231,29 @@ def _classify_vertices(
     for fi in non_slope_faces:
         non_slope_verts.update(faces[fi].tolist())
 
-    split_indices = sorted(slope_verts & non_slope_verts)
+    # Index-based split vertices (shared by both slope and non-slope faces)
+    split_indices_set = slope_verts & non_slope_verts
+
+    # Position-based split vertices: non-slope vertices coincident with
+    # slope-only vertices (common in GLB meshes with per-face attributes).
+    slope_only = sorted(slope_verts - split_indices_set)
+    non_slope_only = sorted(non_slope_verts - split_indices_set)
+    coincident_map: dict[int, int] = {}  # non-slope idx → slope idx
+
+    if slope_only and non_slope_only:
+        slope_positions = vertices[slope_only]
+        non_slope_positions = vertices[non_slope_only]
+        # For each non-slope vertex, find closest slope vertex
+        for i, ns_idx in enumerate(non_slope_only):
+            dists = np.linalg.norm(slope_positions - non_slope_positions[i], axis=1)
+            min_dist_idx = int(np.argmin(dists))
+            if dists[min_dist_idx] < position_tol:
+                s_idx = slope_only[min_dist_idx]
+                coincident_map[ns_idx] = s_idx
+                # Treat the slope-side vertex as a split vertex too
+                split_indices_set.add(s_idx)
+
+    split_indices = sorted(split_indices_set)
 
     vert_to_region: dict[int, int] = {}
     for ri, vert_arr in enumerate(region_vert_indices):
@@ -231,7 +262,7 @@ def _classify_vertices(
             if vi_int not in vert_to_region:
                 vert_to_region[vi_int] = ri
 
-    return region_vert_indices, split_indices, vert_to_region
+    return region_vert_indices, split_indices, vert_to_region, coincident_map
 
 
 def _resize_region(
@@ -278,35 +309,58 @@ def _resize_region(
 def resize_slope_regions(
     mesh: o3d.geometry.TriangleMesh,
     assignments: list[tuple[SlopeRegion, list[dict]]],
-) -> tuple[np.ndarray, list[SplitVertex], list[np.ndarray]]:
+) -> tuple[np.ndarray, list[SplitVertex], list[np.ndarray], dict[int, int]]:
     """Resize slope regions to exact brick-multiple dimensions.
 
-    For each assigned region, scales its vertices so that the region's bounding box 
+    For each assigned region, scales its vertices so that the region's bounding box
     becomes an integer multiple of the matched brick dimensions.
 
-    Also identifies split vertices: vertices shared between slope region
-    faces and non-slope faces.
+    Also identifies split vertices (by index AND by position) and
+    propagates the resize displacement to positional duplicates on the
+    non-slope side so the mesh stays watertight.
 
     Args:
         mesh: Scaled mesh (post apply_scale).
         assignments: (region, matched_bricks) pairs.
 
     Returns:
-        (target_positions, split_vertices, region_vert_indices):
+        (target_positions, split_vertices, region_vert_indices, coincident_map):
         - target_positions: (N, 3) copy of mesh vertices with slope vertices moved.
         - split_vertices: SplitVertex objects with region_index set.
         - region_vert_indices: list of vertex index arrays, one per region.
+        - coincident_map: non-slope vertex → slope vertex for positional duplicates.
     """
     faces = np.asarray(mesh.triangles)
     vertices = np.asarray(mesh.vertices)
     target = vertices.copy()
 
-    region_vert_indices, split_indices, vert_to_region = _classify_vertices(
-        faces, assignments,
+    region_vert_indices, split_indices, vert_to_region, coincident_map = (
+        _classify_vertices(faces, vertices, assignments)
     )
 
+    # Resize each region into a separate buffer, then average for vertices
+    # that belong to multiple regions (e.g. ridge vertices between two roof
+    # slopes).  Without averaging, the last region's resize overwrites
+    # earlier ones, causing asymmetry.
+    n_verts = len(vertices)
+    region_count = np.zeros(n_verts, dtype=int)
+    region_sum = np.zeros_like(vertices)
+
     for ri, (region, bricks) in enumerate(assignments):
-        _resize_region(vertices, target, region, bricks, region_vert_indices[ri])
+        temp = vertices.copy()
+        _resize_region(vertices, temp, region, bricks, region_vert_indices[ri])
+        for vi in region_vert_indices[ri]:
+            vi = int(vi)
+            region_sum[vi] += temp[vi]
+            region_count[vi] += 1
+
+    moved = region_count > 0
+    target[moved] = region_sum[moved] / region_count[moved, np.newaxis]
+
+    # Propagate resize displacement to coincident non-slope vertices so
+    # the boundary stays watertight after resizing.
+    for ns_idx, s_idx in coincident_map.items():
+        target[ns_idx] = target[s_idx]
 
     split_vertices = [
         SplitVertex(
@@ -318,7 +372,8 @@ def resize_slope_regions(
         for idx in split_indices
     ]
 
-    return target, split_vertices, region_vert_indices
+    return target, split_vertices, region_vert_indices, coincident_map
+
 
 def _energy_and_gradient(
     x: np.ndarray,
@@ -326,23 +381,24 @@ def _energy_and_gradient(
     n_regions: int,
     region_corner_indices: list[list[int]],
     split_vertices: list[SplitVertex],
-    flat_planes: list[Plane],
     split_plane_membership: dict[int, list[tuple[np.ndarray, float]]],
     plane_vertex_indices: list[int],
     plane_vertex_membership: dict[int, list[tuple[np.ndarray, float]]],
     lambda_t: float,
     lambda_p: float,
 ) -> tuple[float, np.ndarray]:
-    """Compute E_deform and its gradient w.r.t. rigid-body translations.
+    """Compute E_deform = E_int + λ_t·E_topology + λ_p·E_planarity and gradient.
+
+    Variables: region translations p_i, split mesh-side positions, plane vertex positions.
 
     Returns:
         (E_deform, grad) — grad has same shape as x.
     """
     n_split = len(split_vertices)
     n_plane = len(plane_vertex_indices)
-    n_vars = 3 * n_regions + 3 * n_split + 3 * n_plane
     split_offset = 3 * n_regions
     plane_offset = split_offset + 3 * n_split
+    n_vars = 3 * n_regions + 3 * n_split + 3 * n_plane
 
     grad = np.zeros(n_vars)
     E_deform = 0.0
@@ -367,10 +423,9 @@ def _energy_and_gradient(
         grad[3 * ri: 3 * ri + 3] += lambda_t * 2.0 * diff
         grad[split_offset + 3 * j: split_offset + 3 * j + 3] += lambda_t * (-2.0 * diff)
 
-    # E_planarity (Eq 10): keep mesh-side split copies on their flat planes
+    # E_planarity (Eq 10): keep split mesh-side copies on their flat planes
     for j, sv in enumerate(split_vertices):
-        planes = split_plane_membership.get(sv.original_index, [])
-        for n_i, v_0i in planes:
+        for n_i, v_0i in split_plane_membership.get(sv.original_index, []):
             v_mesh = x[split_offset + 3 * j: split_offset + 3 * j + 3]
             proj = float(np.dot(n_i, v_mesh)) - v_0i
             E_deform += lambda_p * proj * proj
@@ -378,22 +433,18 @@ def _energy_and_gradient(
                 lambda_p * 2.0 * proj * n_i
             )
 
-    # E_planarity for all plane vertices (non-slope vertices on detected planes)
+    # E_planarity for plane vertices (non-slope vertices on detected planes)
     for k, vi in enumerate(plane_vertex_indices):
         v_pos = x[plane_offset + 3 * k: plane_offset + 3 * k + 3]
-        # Planarity: keep on original plane(s)
         for n_i, v_0i in plane_vertex_membership[vi]:
             proj = float(np.dot(n_i, v_pos)) - v_0i
             E_deform += lambda_p * proj * proj
             grad[plane_offset + 3 * k: plane_offset + 3 * k + 3] += (
                 lambda_p * 2.0 * proj * n_i
             )
-        # Position regularization: stay near original position
-        diff = v_pos - resized_positions[vi]
-        E_deform += np.dot(diff, diff)
-        grad[plane_offset + 3 * k: plane_offset + 3 * k + 3] += 2.0 * diff
 
     return E_deform, grad
+
 
 def optimize_vertices(
     resized_positions: np.ndarray,
@@ -405,11 +456,12 @@ def optimize_vertices(
     lambda_p: float = 4.0,
     max_iter: int = 200,
 ) -> tuple[np.ndarray, float]:
-    """Minimize E_deform using rigid-body translations per slope region.
+    """Minimize E_deform = E_int + λ_t·E_topology + λ_p·E_planarity.
 
-    Planarity is enforced on ALL vertices belonging to detected flat planes,
-    not just split vertices. This keeps entire walls/roofs coplanar during
-    deformation.
+    Variables:
+    - p_i: rigid translations per slope region
+    - Split vertex mesh-side positions
+    - Plane vertex positions (non-slope vertices on detected flat planes)
 
     Args:
         resized_positions: (N, 3) vertex positions (slope vertices already resized).
@@ -426,56 +478,53 @@ def optimize_vertices(
     """
     n_regions = len(region_vert_indices)
     n_split = len(split_vertices)
+    n_verts = len(resized_positions)
 
     if n_regions == 0:
         return resized_positions.copy(), 0.0
 
-    # Collect all slope vertex indices
+    # Collect all slope vertex indices and build region lookup
     slope_verts: set[int] = set()
-    for vert_arr in region_vert_indices:
-        slope_verts.update(int(v) for v in vert_arr)
+    vert_to_regions: dict[int, list[int]] = {}
+    for ri, vert_arr in enumerate(region_vert_indices):
+        for v in vert_arr:
+            vi = int(v)
+            slope_verts.add(vi)
+            vert_to_regions.setdefault(vi, []).append(ri)
     split_vert_set = {sv.original_index for sv in split_vertices}
 
-    # Precompute plane membership for split vertices (mesh-side planarity)
+    # Precompute plane membership for split vertices
     split_plane_membership: dict[int, list[tuple[np.ndarray, float]]] = {}
     for plane in flat_planes:
         vs = set(plane.vertex_indices)
         for sv in split_vertices:
             if sv.original_index in vs:
-                if sv.original_index not in split_plane_membership:
-                    split_plane_membership[sv.original_index] = []
-                split_plane_membership[sv.original_index].append(
+                split_plane_membership.setdefault(sv.original_index, []).append(
                     (plane.normal, plane.offset)
                 )
 
-    # Identify non-slope plane vertices: vertices on flat planes that are
-    # NOT slope region vertices (split vertices are already handled above).
+    # Plane vertices: non-slope vertices on detected flat planes
     plane_vertex_membership: dict[int, list[tuple[np.ndarray, float]]] = {}
     for plane in flat_planes:
         for vi in plane.vertex_indices:
-            if vi in slope_verts:
-                continue  # slope verts move rigidly, split verts already free
-            if vi not in plane_vertex_membership:
-                plane_vertex_membership[vi] = []
-            plane_vertex_membership[vi].append((plane.normal, plane.offset))
+            if vi not in slope_verts:
+                plane_vertex_membership.setdefault(vi, []).append(
+                    (plane.normal, plane.offset)
+                )
     plane_vertex_indices = sorted(plane_vertex_membership.keys())
     n_plane = len(plane_vertex_indices)
 
     # Build initial x:
-    #   [p_0, ..., p_{nr-1},
-    #    split_mesh_0, ..., split_mesh_{ns-1},
-    #    plane_v_0, ..., plane_v_{np-1}]
+    #   [p_0..p_{nr-1}, split_mesh_0..split_mesh_{ns-1}, plane_v_0..plane_v_{np-1}]
     split_offset = 3 * n_regions
     plane_offset = split_offset + 3 * n_split
     n_vars = 3 * n_regions + 3 * n_split + 3 * n_plane
     x0 = np.zeros(n_vars)
 
-    # Mesh-side split copies start at resized positions
     for j, sv in enumerate(split_vertices):
         x0[split_offset + 3 * j: split_offset + 3 * j + 3] = (
             resized_positions[sv.original_index]
         )
-    # Plane vertices start at their current positions
     for k, vi in enumerate(plane_vertex_indices):
         x0[plane_offset + 3 * k: plane_offset + 3 * k + 3] = (
             resized_positions[vi]
@@ -485,7 +534,7 @@ def optimize_vertices(
         _energy_and_gradient,
         x0,
         args=(resized_positions, n_regions, region_corner_indices,
-              split_vertices, flat_planes, split_plane_membership,
+              split_vertices, split_plane_membership,
               plane_vertex_indices, plane_vertex_membership,
               lambda_t, lambda_p),
         method='L-BFGS-B',
@@ -493,18 +542,43 @@ def optimize_vertices(
         options={'maxiter': max_iter, 'ftol': 1e-10, 'gtol': 1e-7},
     )
 
-    # Unpack result: apply rigid translation to each region's vertices
+    # --- Unpack result ---
     optimized = resized_positions.copy()
+
+    # Slope vertices: rigid translations (average for multi-region)
+    translation_sum = np.zeros((n_verts, 3))
+    translation_count = np.zeros(n_verts, dtype=int)
     for ri in range(n_regions):
         p_i = result.x[3 * ri: 3 * ri + 3]
         for vi in region_vert_indices[ri]:
-            optimized[vi] = resized_positions[vi] + p_i
+            vi = int(vi)
+            translation_sum[vi] += p_i
+            translation_count[vi] += 1
 
-    # Write back optimized plane vertex positions
+    has_translation = translation_count > 0
+    avg_translation = np.zeros((n_verts, 3))
+    avg_translation[has_translation] = (
+        translation_sum[has_translation]
+        / translation_count[has_translation, np.newaxis]
+    )
+    optimized[has_translation] = (
+        resized_positions[has_translation] + avg_translation[has_translation]
+    )
+
+    # Split vertices: average slope-side and mesh-side
+    for j, sv in enumerate(split_vertices):
+        ri = sv.region_index
+        p_i = result.x[3 * ri: 3 * ri + 3]
+        slope_side = resized_positions[sv.original_index] + p_i
+        mesh_side = result.x[split_offset + 3 * j: split_offset + 3 * j + 3]
+        optimized[sv.original_index] = 0.5 * (slope_side + mesh_side)
+
+    # Plane vertices: direct from optimizer
     for k, vi in enumerate(plane_vertex_indices):
         optimized[vi] = result.x[plane_offset + 3 * k: plane_offset + 3 * k + 3]
 
     return optimized, float(result.fun)
+
 
 def deform_mesh(
     mesh: o3d.geometry.TriangleMesh,
@@ -542,8 +616,8 @@ def deform_mesh(
             final_energy=0.0,
         )
 
-    target_positions, split_vertices, region_vert_indices = resize_slope_regions(
-        scaled_mesh, assignments,
+    target_positions, split_vertices, region_vert_indices, coincident_map = (
+        resize_slope_regions(scaled_mesh, assignments)
     )
 
     # Identify slope corners per region for E_int
@@ -590,6 +664,12 @@ def deform_mesh(
         lambda_p=lambda_p,
         max_iter=max_iter,
     )
+
+    # Sync coincident non-slope vertices with their slope-side counterparts.
+    # These are positional duplicates (same position, different index) that
+    # must track the slope vertex they're paired with.
+    for ns_idx, s_idx in coincident_map.items():
+        optimized_positions[ns_idx] = optimized_positions[s_idx]
 
     return DeformationResult(
         deformed_vertices=optimized_positions,
