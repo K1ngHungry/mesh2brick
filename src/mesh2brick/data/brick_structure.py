@@ -50,6 +50,17 @@ class Brick:
 
     @property
     def slice_2d(self) -> (slice, slice):
+        # For type=1 slopes, l (slope run) maps to LDR Z (our Y) with identity,
+        # so even rotation: x=w, y=l. Odd rotation swaps: x=l, y=w.
+        # This is opposite of type=0 where even rotation: x=l, y=w.
+        if self.type == 1:
+            # Slope run (l) maps to LDR Z (our Y) for even rotation,
+            # and to LDR X (our X) for odd rotation.
+            if self.rotation % 2 == 0:
+                return slice(self.x, self.x + self.w), slice(self.y, self.y + self.l)
+            else:
+                return slice(self.x, self.x + self.l), slice(self.y, self.y + self.w)
+        # Type=0: from_json already swaps l,w for odd rotations
         return slice(self.x, self.x + self.l), slice(self.y, self.y + self.w)
 
     @property
@@ -73,15 +84,32 @@ class Brick:
         return f'T{self.type} {self.l}x{self.w}x{self.h} R{self.rotation} ({self.x},{self.y},{self.z})\n'
 
     def to_ldr(self, base_height: float = 0) -> str:
-        x = (self.x + self.l * 0.5) * 20
-        z = (self.y + self.w * 0.5) * 20
+        if self.type == 1:
+            # Slope run (l) maps to LDR Z (our Y) for even rotation,
+            # and to LDR X (our X) for odd rotation.
+            if self.rotation % 2 == 0:
+                x = (self.x + self.w * 0.5) * 20
+                z = (self.y + self.l * 0.5) * 20
+            else:
+                x = (self.x + self.l * 0.5) * 20
+                z = (self.y + self.w * 0.5) * 20
+        else:
+            x = (self.x + self.l * 0.5) * 20
+            z = (self.y + self.w * 0.5) * 20
         y = (self.z + self.h + base_height) * -8
-        matrices = [
-            '0 0 1 0 1 0 -1 0 0',      # R0 (270 deg) — was ori=0
-            '-1 0 0 0 1 0 0 0 -1',     # R1 (180 deg) — was ori=1
+        brick_matrices = [
+            '0 0 1 0 1 0 -1 0 0',      # R0 (270 deg)
+            '-1 0 0 0 1 0 0 0 -1',     # R1 (180 deg)
             '0 0 -1 0 1 0 1 0 0',      # R2 (90 deg)
             '1 0 0 0 1 0 0 0 1'        # R3 (0 deg / identity)
         ]
+        slope_matrices = [
+            '1 0 0 0 1 0 0 0 1',       # R0 (identity)
+            '0 0 -1 0 1 0 1 0 0',      # R1 (90 deg)
+            '-1 0 0 0 1 0 0 0 -1',     # R2 (180 deg)
+            '0 0 1 0 1 0 -1 0 0',      # R3 (270 deg)
+        ]
+        matrices = slope_matrices if self.type == 1 else brick_matrices
         matrix = matrices[self.rotation % 4]
         line = f'1 115 {x} {y} {z} {matrix} {self.part_id}\n'
         step_line = '0 STEP\n'
@@ -92,7 +120,7 @@ class Brick:
         brick_type = brick_id_to_type(brick_json['brick_id'])
         l, w, h = brick_id_to_dimensions(brick_json['brick_id'])
         rotation = brick_json['rotation']
-        if rotation % 2 == 1:
+        if brick_type != 1 and rotation % 2 == 1:
             l, w = w, l
         x, y, z = brick_json['x'], brick_json['y'], brick_json['z']
         return cls(type=brick_type, l=l, w=w, h=h, rotation=rotation, x=x, y=y, z=z)
@@ -116,24 +144,39 @@ class Brick:
             case ['1', _, x0, y0, z0, *matrix, part_id]:
                 x0, y0, z0 = map(float, (x0, y0, z0))
                 matrix_str = ' '.join(matrix)
-                if matrix_str == '0 0 1 0 1 0 -1 0 0':
-                    rotation = 0
-                elif matrix_str == '-1 0 0 0 1 0 0 0 -1':
-                    rotation = 1
-                elif matrix_str == '0 0 -1 0 1 0 1 0 0':
-                    rotation = 2
-                elif matrix_str == '1 0 0 0 1 0 0 0 1':
-                    rotation = 3
-                else:
-                    raise ValueError(f'Invalid transformation matrix: {matrix_str}')
 
                 l, w, h = brick_id_to_dimensions(part_id_to_brick_id(part_id))
                 brick_type = brick_id_to_type(part_id_to_brick_id(part_id))
-                if rotation % 2 == 1:
+
+                brick_matrix_to_rotation = {
+                    '0 0 1 0 1 0 -1 0 0': 0,
+                    '-1 0 0 0 1 0 0 0 -1': 1,
+                    '0 0 -1 0 1 0 1 0 0': 2,
+                    '1 0 0 0 1 0 0 0 1': 3,
+                }
+                slope_matrix_to_rotation = {
+                    '1 0 0 0 1 0 0 0 1': 0,
+                    '0 0 -1 0 1 0 1 0 0': 1,
+                    '-1 0 0 0 1 0 0 0 -1': 2,
+                    '0 0 1 0 1 0 -1 0 0': 3,
+                }
+                matrix_map = slope_matrix_to_rotation if brick_type == 1 else brick_matrix_to_rotation
+                if matrix_str not in matrix_map:
+                    raise ValueError(f'Invalid transformation matrix: {matrix_str}')
+                rotation = matrix_map[matrix_str]
+                if brick_type != 1 and rotation % 2 == 1:
                     l, w = w, l
 
-                x = int(x0 / 20 - l * 0.5)
-                y = int(z0 / 20 - w * 0.5)
+                if brick_type == 1:
+                    if rotation % 2 == 0:
+                        x = int(x0 / 20 - w * 0.5)
+                        y = int(z0 / 20 - l * 0.5)
+                    else:
+                        x = int(x0 / 20 - l * 0.5)
+                        y = int(z0 / 20 - w * 0.5)
+                else:
+                    x = int(x0 / 20 - l * 0.5)
+                    y = int(z0 / 20 - w * 0.5)
                 z = int(-y0 / 8 - h)
 
                 return cls(type=brick_type, l=l, w=w, h=h, rotation=rotation, x=x, y=y, z=z)

@@ -277,11 +277,13 @@ class TestComputeOptimalScale:
         assert len(assignments) == 1
 
     def test_multiple_regions_uses_max_smin(self):
-        """Optimal scale should be max of all s_min values (when within bounds)."""
-        r1 = _make_region(slope_angle=45.0, length=0.5, width=0.5)
-        # 45° brick l=2, w=1. s_min = max(2/0.5, 1/0.5) = max(4, 2) = 4
-        r2 = _make_region(slope_angle=56.0, length=0.2, width=0.2)
-        # 56° matches 56.31° bricks, smallest is l=2, w=1. s_min = max(2/0.2, 1/0.2) = max(10, 5) = 10
+        """Optimal scale should be max of all s_min values (when within bounds).
+        Angles are in isotropic mesh space; converted to voxel space (3x Z) before matching.
+        iso 18.4° → voxel ~45°, iso 26.6° → voxel ~56.3°."""
+        r1 = _make_region(slope_angle=18.4, length=0.5, width=0.5)
+        # voxel ~45° brick l=2, w=1. s_min = max(2/0.5, 1/0.5) = max(4, 2) = 4
+        r2 = _make_region(slope_angle=26.6, length=0.2, width=0.2)
+        # voxel ~56° matches 56.31° bricks, smallest is l=2, w=1. s_min = max(2/0.2, 1/0.2) = max(10, 5) = 10
         scale, assignments = compute_optimal_scale(
             [r1, r2], default_scale=5.0, max_scale=40.0,
         )

@@ -232,13 +232,23 @@ def match_slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = 
 slope_to_bricks = match_slope_to_bricks
 
 
+def iso_to_voxel_angle(iso_angle: float, z_scale: float = 3.0) -> float:
+    """Convert a slope angle from isotropic mesh space to voxel space.
+
+    In voxel space, Z is scaled by z_scale (default 3 for LEGO plate/stud ratio).
+    This makes slopes steeper: a 26.6° isotropic slope becomes ~56.3° in voxel space.
+    """
+    return math.degrees(math.atan(z_scale * math.tan(math.radians(iso_angle))))
+
+
 def _compute_s_min(region: SlopeRegion, slope_bricks: list[dict] | None = None) -> float | None:
     """Compute the minimum scale to fit at least one slope brick into a region.
 
     Returns the s_min for the easiest-to-fit (smallest) matching brick,
     or None if no brick can be matched.
     """
-    matched = match_slope_to_bricks(region.slope_angle, slope_bricks)
+    voxel_angle = iso_to_voxel_angle(region.slope_angle)
+    matched = match_slope_to_bricks(voxel_angle, slope_bricks)
     if not matched or region.length <= 0 or region.width <= 0:
         return None
 
@@ -283,7 +293,8 @@ def compute_optimal_scale(
         s_min = _compute_s_min(region, slope_bricks)
         if s_min is None:
             continue
-        matched = match_slope_to_bricks(region.slope_angle, slope_bricks)
+        voxel_angle = iso_to_voxel_angle(region.slope_angle)
+        matched = match_slope_to_bricks(voxel_angle, slope_bricks)
         region_info.append((region, matched, s_min))
 
     if not region_info:
@@ -292,6 +303,20 @@ def compute_optimal_scale(
     # Optimal scale = max of all s_min values (zero energy), clamped
     s_star = max(info[2] for info in region_info)
     s_star = max(s_star, default_scale)
+
+    # Round up to the nearest scale where region dimensions are multiples
+    # of the smallest matched brick's slope run (brick_l), so the staircase
+    # tiles evenly and aligns with the stud grid.
+    for region, matched, _ in region_info:
+        if not matched or region.length <= 0:
+            continue
+        brick_l = min(b['length'] for b in matched)
+        # We need region.length * scale to be a multiple of brick_l
+        # → scale = ceil(region.length * s_star / brick_l) * brick_l / region.length
+        n = math.ceil(region.length * s_star / brick_l)
+        s_aligned = n * brick_l / region.length
+        s_star = max(s_star, s_aligned)
+
     s_star = min(s_star, max_scale)
 
     # Fallback: discard regions where s_star < 0.5 * s_min

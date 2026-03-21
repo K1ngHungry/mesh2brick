@@ -24,9 +24,9 @@ def test_brick_structure():
         '1': {'brick_id': 1, 'x': 0, 'y': 0, 'z': 0, 'type': 0, 'rotation': 0},
         '2': {'brick_id': 1, 'x': 2, 'y': 0, 'z': 0, 'type': 0, 'rotation': 0},
     }
-    # R0 = identity matrix, 2x6 brick: x_center=1*20=20, z_center=3*20=60, y=-(3)*8=-24
-    bricks_ldr = '1 15 20.0 -24 60.0 1 0 0 0 1 0 0 0 1 2456.DAT\n0 STEP\n' \
-                 '1 15 60.0 -24 60.0 1 0 0 0 1 0 0 0 1 2456.DAT\n0 STEP\n'
+    # R0 = 270° matrix for regular bricks, 2x6 brick: x_center=1*20=20, z_center=3*20=60, y=-(3)*8=-24
+    bricks_ldr = '1 115 20.0 -24 60.0 0 0 1 0 1 0 -1 0 0 2456.DAT\n0 STEP\n' \
+                 '1 115 60.0 -24 60.0 0 0 1 0 1 0 -1 0 0 2456.DAT\n0 STEP\n'
 
     for bricks in [BrickStructure.from_json(bricks_json), BrickStructure.from_txt(bricks_txt),
                    BrickStructure.from_ldr(bricks_ldr)]:
@@ -73,7 +73,7 @@ def test_slope_brick_rotated():
 
 def test_slope_roundtrip_ldr():
     # 2x2x3 slope: x_center=1*20=20, z_center=1*20=20, y=-(3)*8=-24
-    brick_ldr = '1 15 20.0 -24 20.0 1 0 0 0 1 0 0 0 1 3039.DAT'
+    brick_ldr = '1 115 20.0 -24 20.0 1 0 0 0 1 0 0 0 1 3039.DAT'
     brick = Brick.from_ldr(brick_ldr)
     assert brick.type == 1
     assert brick.brick_id == 201
