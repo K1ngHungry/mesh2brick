@@ -7,7 +7,6 @@ import pytest
 from mesh2brick.data.brick_structure import Brick
 from mesh2brick.slope_detection import (
     SlopeRegion,
-    compute_energy,
     compute_optimal_scale,
     detect_slopes,
     get_slope_bricks,
@@ -300,27 +299,3 @@ class TestComputeOptimalScale:
         assert scale == 20.0
 
 
-class TestComputeEnergy:
-    def test_energy_zero_at_sufficient_scale(self):
-        """Energy should be zero when scale >= s_min for all regions."""
-        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
-        # s_min ~6.67, so scale=20 should give zero energy
-        energy = compute_energy(20.0, [region])
-        assert energy == 0.0
-
-    def test_energy_positive_below_smin(self):
-        """Energy should be positive when scale < s_min."""
-        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
-        energy = compute_energy(1.0, [region])
-        assert energy > 0.0
-
-    def test_energy_no_regions(self):
-        """Energy should be zero with no regions."""
-        assert compute_energy(20.0, []) == 0.0
-
-    def test_energy_monotonically_decreasing(self):
-        """Energy should decrease (or stay same) as scale increases."""
-        region = _make_region(slope_angle=45.0, length=0.3, width=0.2)
-        energies = [compute_energy(s, [region]) for s in [1.0, 5.0, 10.0, 20.0]]
-        for i in range(len(energies) - 1):
-            assert energies[i] >= energies[i + 1]

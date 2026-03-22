@@ -103,7 +103,12 @@ class Brick:
         else:
             x = (self.x + self.l * 0.5) * 20
             z = (self.y + self.w * 0.5) * 20
-        y = (self.z + self.h + base_height) * -8
+        # Cheese slopes (type=1, h=2) have LDraw origin at the BOTTOM,
+        # while all other bricks/slopes have origin at the TOP.
+        if self.type == 1 and self.h == 2:
+            y = (self.z + base_height) * -8
+        else:
+            y = (self.z + self.h + base_height) * -8
         brick_matrices = [
             '0 0 1 0 1 0 -1 0 0',      # R0 (270 deg)
             '-1 0 0 0 1 0 0 0 -1',     # R1 (180 deg)

@@ -105,8 +105,7 @@ def detect_slopes(
         return []
 
     # Filter out planar regions
-    up = np.array([0.0, 0.0, 1.0])
-    cos_angles = np.abs(normals @ up)
+    cos_angles = np.abs(normals[:, 2])
     vert_angle_diff = np.degrees(np.arccos(np.clip(cos_angles, 0, 1)))
     is_sloped = (vert_angle_diff > planar_deg_err) & (vert_angle_diff < 90 - planar_deg_err)
     sloped_faces = set(np.where(is_sloped)[0])
@@ -159,10 +158,8 @@ def detect_slopes(
 
         # Slope direction: project normal onto XY plane, snap to cardinal
         direction = np.array([avg_normal[0], avg_normal[1]])
-        dir_norm = np.linalg.norm(direction)
-        if dir_norm < 1e-10:
+        if np.linalg.norm(direction) < 1e-10:
             continue
-        direction /= dir_norm
         slope_direction = _to_cardinal(direction)
 
         length, width, height = _compute_region_bounds(mesh, group, slope_direction)
@@ -228,10 +225,6 @@ def match_slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = 
     return matches
 
 
-# Backward compatibility alias
-slope_to_bricks = match_slope_to_bricks
-
-
 def iso_to_voxel_angle(iso_angle: float, z_scale: float = 3.0) -> float:
     """Convert a slope angle from isotropic mesh space to voxel space.
 
@@ -278,23 +271,26 @@ def compute_optimal_scale(
         max_scale: Upper bound on scale to prevent huge models.
 
     Returns:
-        (optimal_scale, assignments, irregular_assignments) where assignments is a list of
-        (region, matched_bricks) pairs that are rectangular enough for rigid scaling. 
-        Regions whose s_min > 2 * optimal_scale are excluded.
+        (optimal_scale, assignments) where assignments is a list of
+        (region, matched_bricks) pairs. Regions whose s_min > 2 * optimal_scale
+        are excluded.
     """
     if not regions:
-        return default_scale, [], []
+        return default_scale, []
 
     slope_bricks = get_slope_bricks()
 
     # For each region, find best matching bricks and compute s_min
     region_info: list[tuple[SlopeRegion, list[dict], float]] = []
     for region in regions:
-        s_min = _compute_s_min(region, slope_bricks)
-        if s_min is None:
-            continue
         voxel_angle = iso_to_voxel_angle(region.slope_angle)
         matched = match_slope_to_bricks(voxel_angle, slope_bricks)
+        if not matched or region.length <= 0 or region.width <= 0:
+            continue
+        s_min = min(
+            max(b['length'] / region.length, b['width'] / region.width)
+            for b in matched
+        )
         region_info.append((region, matched, s_min))
 
     if not region_info:
@@ -319,35 +315,12 @@ def compute_optimal_scale(
 
     s_star = min(s_star, max_scale)
 
-    # Fallback: discard regions where s_star < 0.5 * s_min
+    # Discard regions where s_star < 0.5 * s_min
     assignments: list[tuple[SlopeRegion, list[dict]]] = []
-    irregular_assignments: list[tuple[SlopeRegion, list[dict]]] = []
-    
     for region, matched, s_min in region_info:
         if s_star >= 0.5 * s_min:
-            # Rectangularity check: Compare the actual projected 3D area to its 2D bounding box
-            projected_area = region.area * abs(math.cos(math.radians(region.slope_angle)))
-            bbox_area = region.length * region.width
-            rectangularity = projected_area / bbox_area if bbox_area > 0 else 0.0
-            
-            if rectangularity >= 0.8:
-                assignments.append((region, matched))
-            else:
-                irregular_assignments.append((region, matched))
+            assignments.append((region, matched))
 
-    return s_star, assignments, irregular_assignments
+    return s_star, assignments
 
 
-def compute_energy(scale: float, regions: list[SlopeRegion]) -> float:
-    """Compute total scale energy for a given scale. Lower is better.
-
-    E_scale(s) = sum of max(0, s_min_i - s) for all slope regions.
-    Currently only handles slopes; designed for future cylinder extension.
-    """
-    slope_bricks = get_slope_bricks()
-    total = 0.0
-    for region in regions:
-        s_min = _compute_s_min(region, slope_bricks)
-        if s_min is not None:
-            total += max(0.0, s_min - scale)
-    return total
