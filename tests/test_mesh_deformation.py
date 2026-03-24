@@ -5,21 +5,13 @@ import numpy as np
 import open3d as o3d
 import pytest
 
-from mesh2brick.mesh_deformation import (
-    DeformationResult,
+from mesh2brick.slopes import DeformationResult, SlopeRegion, apply_scale, deform_mesh
+from mesh2brick.slopes.deformation import (
     Plane,
     SplitVertex,
-    apply_scale,
-    deform_mesh,
-    detect_planes,
     resize_slope_regions,
 )
-from mesh2brick.slope_detection import (
-    SlopeRegion,
-    compute_optimal_scale,
-    detect_slopes,
-    match_slope_to_bricks,
-)
+from mesh2brick.slopes import compute_optimal_scale, detect_features, match_slope_to_bricks
 
 
 # ---------------------------------------------------------------------------
@@ -118,14 +110,14 @@ class TestDetectFlatPlanes:
     def test_box_has_planes(self):
         box = _make_box()
         scaled = apply_scale(box, 10.0)
-        planes = detect_planes(scaled, min_faces=1)
+        planes = detect_features(scaled, min_plane_faces=1).planes
         # A box has 6 faces (each = 2 triangles), should detect planes
         assert len(planes) >= 3  # at least some axis-aligned planes
 
     def test_each_plane_has_axis_normal(self):
         box = _make_box()
         scaled = apply_scale(box, 10.0)
-        planes = detect_planes(scaled, min_faces=1)
+        planes = detect_features(scaled, min_plane_faces=1).planes
         for plane in planes:
             # Normal should be near an axis
             abs_normal = np.abs(plane.normal)
@@ -133,13 +125,13 @@ class TestDetectFlatPlanes:
 
     def test_empty_mesh(self):
         mesh = o3d.geometry.TriangleMesh()
-        planes = detect_planes(mesh)
+        planes = detect_features(mesh).planes
         assert planes == []
 
     def test_ramp_has_flat_bottom(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        planes = detect_planes(scaled, min_faces=1)
+        planes = detect_features(scaled, min_plane_faces=1).planes
         # Ramp has a flat bottom (horizontal) and vertical walls
         # Should have at least one Z-facing plane (bottom)
         has_z = any(abs(p.normal[2]) > 0.9 for p in planes)
@@ -150,7 +142,7 @@ class TestResizeSlopeRegions:
     def test_dimensions_become_brick_multiples(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_slopes(scaled, min_area_fraction=0.05)
+        regions = detect_features(scaled, min_area_fraction=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
         bricks = match_slope_to_bricks(regions[0].slope_angle)
@@ -183,7 +175,7 @@ class TestResizeSlopeRegions:
     def test_split_vertices_identified(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_slopes(scaled, min_area_fraction=0.05)
+        regions = detect_features(scaled, min_area_fraction=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
         bricks = match_slope_to_bricks(regions[0].slope_angle)
@@ -207,7 +199,7 @@ class TestResizeSlopeRegions:
     def test_region_vert_indices_returned(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_slopes(scaled, min_area_fraction=0.05)
+        regions = detect_features(scaled, min_area_fraction=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
         bricks = match_slope_to_bricks(regions[0].slope_angle)
@@ -221,21 +213,22 @@ class TestResizeSlopeRegions:
 class TestDeformMesh:
     def test_box_no_slopes_unchanged(self):
         box = _make_box()
-        result = deform_mesh(box, scale=10.0, assignments=[])
+        result = deform_mesh(box, scale=10.0, assignments=[], flat_planes=[])
         orig_verts = np.asarray(box.vertices) * 10.0
         np.testing.assert_allclose(result.deformed_vertices, orig_verts, atol=1e-6)
         assert result.final_energy == 0.0
 
     def test_ramp_returns_result(self):
         ramp = _make_ramp(45.0, width=3.0)
-        regions = detect_slopes(ramp, min_area_fraction=0.05)
+        features = detect_features(ramp, min_area_fraction=0.05)
+        regions = features.regions
         if not regions:
             pytest.skip("No slopes detected on raw ramp")
         _, assignments = compute_optimal_scale(regions, default_scale=10.0)
         if not assignments:
             pytest.skip("No assignments")
 
-        result = deform_mesh(ramp, scale=10.0, assignments=assignments, max_iter=50)
+        result = deform_mesh(ramp, scale=10.0, assignments=assignments, flat_planes=features.planes, max_iter=50)
         assert isinstance(result, DeformationResult)
         assert result.deformed_vertices.shape[1] == 3
         assert len(result.slope_corner_indices) >= 4
@@ -243,14 +236,15 @@ class TestDeformMesh:
     def test_corner_vertices_near_integer(self):
         """After deformation, corner vertices should be close to integers."""
         ramp = _make_ramp(45.0, width=3.0)
-        regions = detect_slopes(ramp, min_area_fraction=0.05)
+        features = detect_features(ramp, min_area_fraction=0.05)
+        regions = features.regions
         if not regions:
             pytest.skip("No slopes detected")
         _, assignments = compute_optimal_scale(regions, default_scale=10.0)
         if not assignments:
             pytest.skip("No assignments")
 
-        result = deform_mesh(ramp, scale=10.0, assignments=assignments, max_iter=200)
+        result = deform_mesh(ramp, scale=10.0, assignments=assignments, flat_planes=features.planes, max_iter=200)
 
         # Check that corner vertices are near integers
         corner_verts = result.deformed_vertices[result.slope_corner_indices]
@@ -261,14 +255,15 @@ class TestDeformMesh:
 
     def test_house_with_roof(self):
         house = _make_house()
-        regions = detect_slopes(house, min_area_fraction=0.05)
+        features = detect_features(house, min_area_fraction=0.05)
+        regions = features.regions
         if not regions:
             pytest.skip("No slopes detected on house")
         _, assignments = compute_optimal_scale(regions, default_scale=10.0)
         if not assignments:
             pytest.skip("No assignments")
 
-        result = deform_mesh(house, scale=10.0, assignments=assignments, max_iter=50)
+        result = deform_mesh(house, scale=10.0, assignments=assignments, flat_planes=features.planes, max_iter=50)
         assert isinstance(result, DeformationResult)
         assert len(result.flat_planes) > 0  # house has walls and floor
 
@@ -276,7 +271,7 @@ class TestDeformMesh:
         """All vertices in a region should move by the same translation."""
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_slopes(scaled, min_area_fraction=0.05)
+        regions = detect_features(scaled, min_area_fraction=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
         _, assignments = compute_optimal_scale(regions, default_scale=10.0)
@@ -286,7 +281,7 @@ class TestDeformMesh:
         # Get resized positions before optimization
         resized, _, region_vert_indices, _ = resize_slope_regions(scaled, assignments)
 
-        result = deform_mesh(ramp, scale=10.0, assignments=assignments, max_iter=200)
+        result = deform_mesh(ramp, scale=10.0, assignments=assignments, flat_planes=[], max_iter=200)
 
         # For each region, compute displacement of each vertex and verify uniform
         for ri, vert_indices in enumerate(region_vert_indices):

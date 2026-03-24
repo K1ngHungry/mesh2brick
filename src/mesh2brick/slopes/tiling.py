@@ -4,7 +4,7 @@ import numpy as np
 import open3d as o3d
 
 from mesh2brick.data.brick_structure import Brick
-from mesh2brick.slope_detection import SlopeRegion
+from .detection import SlopeRegion
 
 
 def _region_voxel_bounds(
@@ -109,9 +109,9 @@ def place_slope_bricks(
         x_min, x_max, y_min, y_max, z_min, z_max = _region_voxel_bounds(
             mesh, region, voxel_origin)
 
-        n_x = max(1, round((x_max - x_min) / foot_x))
-        n_y = max(1, round((y_max - y_min) / foot_y))
-        n_z = max(1, round((z_max - z_min) / brick_h))
+        n_x = max(1, round((x_max - x_min + 1) / foot_x))
+        n_y = max(1, round((y_max - y_min + 1) / foot_y))
+        n_z = max(1, round((z_max - z_min + 1) / brick_h))
 
         # Cap n_z so the staircase doesn't exceed the horizontal extent
         if region.slope_direction in (0, 2):

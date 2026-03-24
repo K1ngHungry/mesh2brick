@@ -5,13 +5,8 @@ import open3d as o3d
 import pytest
 
 from mesh2brick.data.brick_structure import Brick
-from mesh2brick.slope_detection import (
-    SlopeRegion,
-    compute_optimal_scale,
-    detect_slopes,
-    get_slope_bricks,
-    match_slope_to_bricks,
-)
+from mesh2brick.slopes import SlopeRegion, compute_optimal_scale, detect_features
+from mesh2brick.slopes.detection import get_slope_bricks, match_slope_to_bricks
 
 
 def _make_mesh(vertices: list, triangles: list) -> o3d.geometry.TriangleMesh:
@@ -89,7 +84,7 @@ class TestDetectSlopes:
     def test_ramp_45(self):
         """A 45° ramp should produce one slope region near 45°."""
         mesh = _make_ramp(angle_deg=45.0, width=5.0)
-        regions = detect_slopes(mesh, min_area_fraction=0.05)
+        regions = detect_features(mesh, min_area_fraction=0.05).regions
         assert len(regions) >= 1
         # Find the region closest to 45°
         angles = [r.slope_angle for r in regions]
@@ -99,13 +94,13 @@ class TestDetectSlopes:
     def test_flat_box(self):
         """A box with only horizontal and vertical faces should produce 0 slope regions."""
         mesh = _make_box()
-        regions = detect_slopes(mesh)
+        regions = detect_features(mesh).regions
         assert len(regions) == 0
 
     def test_pyramid_four_directions(self):
         """A pyramid should detect 4 slope regions with 4 different directions."""
         mesh = _make_pyramid(base_size=4.0, height=4.0)
-        regions = detect_slopes(mesh, min_area_fraction=0.01)
+        regions = detect_features(mesh, min_area_fraction=0.01).regions
         assert len(regions) == 4
         directions = sorted([r.slope_direction for r in regions])
         assert directions == [0, 1, 2, 3]
@@ -115,13 +110,13 @@ class TestDetectSlopes:
         # Create a box with a tiny chamfer (sloped face)
         mesh = _make_box()
         # The box has all axis-aligned faces, so no slopes detected
-        regions = detect_slopes(mesh, min_area_fraction=0.1)
+        regions = detect_features(mesh, min_area_fraction=0.1).regions
         assert len(regions) == 0
 
     def test_steep_slope(self):
         """A steep slope (~63°) should be detected with the right angle."""
         mesh = _make_ramp(angle_deg=63.0, width=5.0)
-        regions = detect_slopes(mesh, min_area_fraction=0.05)
+        regions = detect_features(mesh, min_area_fraction=0.05).regions
         assert len(regions) >= 1
         angles = [r.slope_angle for r in regions]
         closest = min(angles, key=lambda a: abs(a - 63.0))
@@ -130,7 +125,7 @@ class TestDetectSlopes:
     def test_shallow_slope(self):
         """A shallow slope (~27°) should be detected with the right angle."""
         mesh = _make_ramp(angle_deg=27.0, width=5.0)
-        regions = detect_slopes(mesh, min_area_fraction=0.05)
+        regions = detect_features(mesh, min_area_fraction=0.05).regions
         assert len(regions) >= 1
         angles = [r.slope_angle for r in regions]
         closest = min(angles, key=lambda a: abs(a - 27.0))
@@ -139,7 +134,7 @@ class TestDetectSlopes:
     def test_empty_mesh(self):
         """An empty mesh should return no regions."""
         mesh = o3d.geometry.TriangleMesh()
-        regions = detect_slopes(mesh)
+        regions = detect_features(mesh).regions
         assert len(regions) == 0
 
 
