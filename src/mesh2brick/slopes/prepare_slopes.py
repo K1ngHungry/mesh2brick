@@ -41,7 +41,6 @@ def prepare_slopes(
         features.regions, default_scale=resolution,
     )
     s = int(optimal_scale)
-    world_dim = (s, s, s * 3)
 
     deformation = None
     if assignments:
@@ -58,6 +57,14 @@ def prepare_slopes(
     vertices = np.asarray(mesh.vertices)
     vertices[:, 2] *= 3.0
     mesh.vertices = o3d.utility.Vector3dVector(vertices)
+
+    # Compute world_dim from actual mesh bounds (deformation can expand the mesh)
+    extent = np.asarray(mesh.get_max_bound()) - np.asarray(mesh.get_min_bound())
+    world_dim = (
+        max(s, int(np.ceil(extent[0]))),
+        max(s, int(np.ceil(extent[1]))),
+        max(s * 3, int(np.ceil(extent[2]))),
+    )
 
     return SlopeResult(
         mesh=mesh,
