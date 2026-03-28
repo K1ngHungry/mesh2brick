@@ -122,19 +122,20 @@ def _resize_region(
     height_axis = 2
 
     scale_factors = np.ones(3)
-    for axis, brick_dim_key in [
-        (length_axis, 'length'),
-        (width_axis, 'width'),
-        (height_axis, 'height'),
-    ]:
-        if region_dims[axis] > 0:
-            brick_dim = brick[brick_dim_key]
-            if axis == height_axis:
-                brick_dim_iso = brick_dim / 3.0
-                target_dim = max(1, round(region_dims[axis] / brick_dim_iso)) * brick_dim_iso
-            else:
-                target_dim = max(1, round(region_dims[axis] / brick_dim)) * brick_dim
-            scale_factors[axis] = target_dim / region_dims[axis]
+    # Snap width (lateral axis) independently
+    if region_dims[width_axis] > 0:
+        target_w = max(1, round(region_dims[width_axis] / brick['width'])) * brick['width']
+        scale_factors[width_axis] = target_w / region_dims[width_axis]
+
+    # Snap length to grid, then derive height to enforce the brick's angle
+    if region_dims[length_axis] > 0:
+        n_steps = max(1, round(region_dims[length_axis] / brick['length']))
+        target_l = n_steps * brick['length']
+        scale_factors[length_axis] = target_l / region_dims[length_axis]
+
+        if region_dims[height_axis] > 0:
+            target_h = n_steps * brick['height'] / 3.0
+            scale_factors[height_axis] = target_h / region_dims[height_axis]
 
     for vi in vert_indices:
         target[vi] = centroid + (vertices[vi] - centroid) * scale_factors

@@ -131,22 +131,48 @@ def place_slope_bricks(
             sx, sy, sz = brick.slice
             if sx.stop <= world_shape[0] and sy.stop <= world_shape[1] and sz.stop <= world_shape[2]:
                 if not remaining[brick.slice].any():
-                    # Ridge conflict: replace the existing slope with stacked 1x1x1 plates
+                    # Voxels already claimed — check for opposing slope (ridge)
+                    bsx, bsy, bsz = brick.slice
+                    found_overlap = False
                     for i, existing in enumerate(slope_bricks):
-                        if existing.slice == brick.slice:
-                            plates = []
-                            for dz in range(existing.h):
-                                plates.append(Brick(
-                                    type=0, l=1, w=1, h=1,
-                                    rotation=0, x=existing.x, y=existing.y, z=existing.z + dz))
-                            slope_bricks[i:i+1] = plates
+                        if existing.type != 1:
+                            continue
+                        esx, esy, esz = existing.slice
+                        if (esx.start < bsx.stop and bsx.start < esx.stop and
+                                esy.start < bsy.stop and bsy.start < esy.stop and
+                                esz.start < bsz.stop and bsz.start < esz.stop):
+                            found_overlap = True
+                            if existing.rotation != brick.rotation:
+                                plates = []
+                                for dz in range(existing.h):
+                                    for ex in range(esx.start, esx.stop):
+                                        for ey in range(esy.start, esy.stop):
+                                            plates.append(Brick(
+                                                type=0, l=1, w=1, h=1,
+                                                rotation=0, x=ex, y=ey,
+                                                z=existing.z + dz))
+                                slope_bricks[i:i+1] = plates
                             break
-                    continue
+                    if found_overlap:
+                        continue
                 remaining[brick.slice] = False
-                z_above_start = brick.z + brick_h
-                if z_above_start < world_shape[2]:
-                    remaining[sx, sy, z_above_start:] = False
+                # Clear single-voxel noise above slope surface
+                z_above = brick.z + brick_h
+                if z_above < world_shape[2]:
+                    col = remaining[sx, sy, z_above:]
+                    if col.sum() == 1:
+                        remaining[sx, sy, z_above:] = False
                 accepted.append(brick)
-        slope_bricks.extend(accepted)
+
+        # Remove slopes that still have voxels above them — let voxel2brick handle those
+        final = []
+        for brick in accepted:
+            sx, sy, sz = brick.slice
+            z_above = brick.z + brick_h
+            if z_above < world_shape[2] and remaining[sx, sy, z_above:].any():
+                remaining[brick.slice] = True  # give voxels back
+            else:
+                final.append(brick)
+        slope_bricks.extend(final)
 
     return slope_bricks, remaining
