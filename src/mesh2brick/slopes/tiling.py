@@ -36,6 +36,99 @@ def _physical_footprint(brick_l: int, brick_w: int, rotation: int) -> tuple[int,
     return brick_l, brick_w
 
 
+def _merge_slope_bricks(
+    bricks: list[Brick],
+    slope_direction: int,
+    matched_bricks: list[dict],
+    n_lateral: int,
+) -> list[Brick]:
+    """Merge adjacent small slope bricks into larger ones along the lateral axis.
+
+    Prioritises corners then edges: bricks are sorted so that the lateral
+    extremes (first/last positions) are merged first, giving them the best
+    chance of getting a wide brick that connects to a neighbour.
+    """
+    if not bricks:
+        return bricks
+
+    base = bricks[0]
+    available_widths = sorted(
+        set(b['width'] for b in matched_bricks
+            if b['length'] == base.l and b['height'] == base.h),
+        reverse=True,
+    )
+    if len(available_widths) <= 1:
+        return bricks
+
+    lateral_is_y = slope_direction in (0, 2)
+    base_step = base.w  # lateral footprint of the smallest brick
+
+    # Group by (slope_axis_pos, z)
+    groups: dict[tuple[int, int], list[Brick]] = {}
+    for b in bricks:
+        key = (b.x, b.z) if lateral_is_y else (b.y, b.z)
+        groups.setdefault(key, []).append(b)
+
+    merged: list[Brick] = []
+    for group in groups.values():
+        group.sort(key=lambda b: b.y if lateral_is_y else b.x)
+        n = len(group)
+
+        # Build priority: corners (first/last) highest, then edges near them
+        priority = [0.0] * n
+        for idx in range(n):
+            dist_from_edge = min(idx, n - 1 - idx)
+            priority[idx] = dist_from_edge  # lower = higher priority
+
+        # Greedy merge in priority order (process lowest-priority-value first)
+        used = [False] * n
+        pending: list[tuple[float, int]] = sorted(
+            ((priority[idx], idx) for idx in range(n)),
+        )
+
+        for _, start_idx in pending:
+            if used[start_idx]:
+                continue
+            placed = False
+            for w in available_widths:
+                count = w // base_step
+                # Try to extend from start_idx using contiguous unused bricks
+                run = [start_idx]
+                # Extend forward
+                j = start_idx + 1
+                while len(run) < count and j < n and not used[j]:
+                    lat_pos = (group[j].y if lateral_is_y else group[j].x)
+                    expected = (group[run[0]].y if lateral_is_y else group[run[0]].x) + len(run) * base_step
+                    if lat_pos == expected:
+                        run.append(j)
+                        j += 1
+                    else:
+                        break
+                # Extend backward if needed
+                j = start_idx - 1
+                while len(run) < count and j >= 0 and not used[j]:
+                    lat_pos = (group[j].y if lateral_is_y else group[j].x)
+                    expected = (group[run[0]].y if lateral_is_y else group[run[0]].x) - base_step
+                    if lat_pos == expected:
+                        run.insert(0, j)
+                        j -= 1
+                    else:
+                        break
+                if len(run) == count:
+                    b0 = group[run[0]]
+                    merged.append(Brick(
+                        type=1, l=base.l, w=w, h=base.h,
+                        rotation=b0.rotation, x=b0.x, y=b0.y, z=b0.z))
+                    for idx in run:
+                        used[idx] = True
+                    placed = True
+                    break
+            if not placed:
+                used[start_idx] = True
+                merged.append(group[start_idx])
+    return merged
+
+
 def _tile_rigid_block(
     slope_direction: int,
     x_min: int, y_min: int, z_min: int,
@@ -173,6 +266,7 @@ def place_slope_bricks(
                 remaining[brick.slice] = True  # give voxels back
             else:
                 final.append(brick)
+        final = _merge_slope_bricks(final, region.slope_direction, matched_bricks, n_y if region.slope_direction in (0, 2) else n_x)
         slope_bricks.extend(final)
 
     return slope_bricks, remaining
