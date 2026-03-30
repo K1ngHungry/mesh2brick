@@ -23,6 +23,7 @@ class SlopeResult:
     assignments: list[tuple[SlopeRegion, list[dict]]]
     regions: list[SlopeRegion]
     deformation: DeformationResult | None
+    region_n_steps: list[int] | None = None
 
 
 def prepare_slopes(
@@ -73,4 +74,5 @@ def prepare_slopes(
         assignments=assignments,
         regions=features.regions,
         deformation=deformation,
+        region_n_steps=None,
     )

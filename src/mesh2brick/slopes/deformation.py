@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 import open3d as o3d
 from scipy.optimize import minimize
+from scipy.spatial import cKDTree
 
 from .detection import SlopeRegion, Plane
 from .utils import build_face_adjacency, normal_angle_diff
@@ -128,9 +129,11 @@ def _resize_region(
         scale_factors[width_axis] = target_w / region_dims[width_axis]
 
     # Snap length to grid, then derive height to enforce the brick's angle
+    # For h=3 slopes, the stud column overlaps between steps, so advance = run
     if region_dims[length_axis] > 0:
-        n_steps = max(1, round(region_dims[length_axis] / brick['length']))
-        target_l = n_steps * brick['length']
+        run = brick['length'] - 1 if brick['height'] == 3 and brick['length'] > 1 else brick['length']
+        n_steps = max(1, round(region_dims[length_axis] / run))
+        target_l = (n_steps - 1) * run + brick['length']
         scale_factors[length_axis] = target_l / region_dims[length_axis]
 
         if region_dims[height_axis] > 0:
@@ -167,6 +170,44 @@ def resize_slope_regions(
 
     moved = region_count > 0
     target[moved] = region_sum[moved] / region_count[moved, np.newaxis]
+
+    # Snap near-coincident ridge vertices between different slope regions.
+    # The mesh often has separate vertex indices at the ridge; independent
+    # centroid-based scaling pushes them apart.  Average their positions.
+    vert_to_regions: dict[int, set[int]] = {}
+    for ri, vert_arr in enumerate(region_vert_indices):
+        for v in vert_arr:
+            vert_to_regions.setdefault(int(v), set()).add(ri)
+    all_slope_verts = sorted(vert_to_regions.keys())
+    if len(all_slope_verts) > 1:
+        orig_positions = vertices[all_slope_verts]
+        tree = cKDTree(orig_positions)
+        pairs = tree.query_pairs(r=0.5)
+        # Union-find to group coincident vertices
+        parent: dict[int, int] = {}
+        def _find(x: int) -> int:
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent[x], parent[x])
+                x = parent[x]
+            return x
+        for i, j in pairs:
+            vi, vj = all_slope_verts[i], all_slope_verts[j]
+            # Only link if they belong to different regions
+            if vert_to_regions[vi] != vert_to_regions[vj]:
+                ri, rj = _find(i), _find(j)
+                if ri != rj:
+                    parent[ri] = rj
+        from collections import defaultdict
+        groups: dict[int, list[int]] = defaultdict(list)
+        for idx in range(len(all_slope_verts)):
+            groups[_find(idx)].append(idx)
+        for group_indices in groups.values():
+            if len(group_indices) <= 1:
+                continue
+            vert_ids = [all_slope_verts[i] for i in group_indices]
+            avg_pos = np.mean(target[vert_ids], axis=0)
+            for vi in vert_ids:
+                target[vi] = avg_pos
 
     for ns_idx, s_idx in coincident_map.items():
         target[ns_idx] = target[s_idx]

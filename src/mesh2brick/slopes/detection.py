@@ -250,12 +250,15 @@ def get_slope_bricks() -> list[dict]:
     for brick_id, props in brick_library.items():
         if props.get('type') != 1:
             continue
-        angle = math.degrees(math.atan(props['height'] / props['length']))
+        # h=3 slopes have a stud on top, so effective run is length-1
+        run = props['length'] - 1 if props['height'] == 3 and props['length'] > 1 else props['length']
+        angle = math.degrees(math.atan(props['height'] / run))
         slope_bricks.append({
             'brick_id': int(brick_id),
             'length': props['length'],
             'width': props['width'],
             'height': props['height'],
+            'run': run,
             'angle': angle,
         })
     return slope_bricks
@@ -281,6 +284,7 @@ def compute_optimal_scale(
     regions: list[SlopeRegion],
     default_scale: float = 20.0,
     max_scale: float = 40.0,
+    min_steps: int = 2,
 ) -> tuple[float, list[tuple[SlopeRegion, list[dict]]]]:
     if not regions:
         return default_scale, []
@@ -294,7 +298,7 @@ def compute_optimal_scale(
         if not matched or region.length <= 0 or region.width <= 0:
             continue
         s_min = min(
-            max(b['length'] / region.length, b['width'] / region.width)
+            max(min_steps * b['length'] / region.length, b['width'] / region.width)
             for b in matched
         )
         region_info.append((region, matched, s_min))
