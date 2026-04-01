@@ -171,7 +171,14 @@ def detect_features(
             continue
         avg_normal /= norm
 
+        # Skip downward-facing slopes (bottom/interior surfaces)
+        # These create duplicate opposing regions that cause brick overlaps
+        if avg_normal[2] < 0:
+            print(f"  [FILTERED] Downward slope: nz={avg_normal[2]:.3f}, angle={math.degrees(math.acos(min(abs(avg_normal[2]), 1.0))):.1f}°")
+            continue
+
         slope_angle = math.degrees(math.acos(min(abs(avg_normal[2]), 1.0)))
+        print(f"  Region: nz={avg_normal[2]:.3f}, angle={slope_angle:.1f}°, dir={_to_cardinal(np.array([avg_normal[0], avg_normal[1]]))}")
 
         direction = np.array([avg_normal[0], avg_normal[1]])
         if np.linalg.norm(direction) < 1e-10:
@@ -297,6 +304,7 @@ def compute_optimal_scale(
         matched = match_slope_to_bricks(voxel_angle, slope_bricks)
         if not matched or region.length <= 0 or region.width <= 0:
             continue
+
         s_min = min(
             max(min_steps * b['length'] / region.length, b['width'] / region.width)
             for b in matched

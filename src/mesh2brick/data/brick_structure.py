@@ -87,19 +87,36 @@ class Brick:
         if self.type == 1:
             # Slope run (l) maps to LDR Z (our Y) for EVEN rotation,
             # and to LDR X (our X) for ODD rotation.
-            # Origin is aligned to top studs natively, not geometric centroid.
-            if self.rotation == 0:
-                x = (self.x + self.w * 0.5) * 20
-                z = (self.y + self.l) * 20 - 10
-            elif self.rotation == 2:
-                x = (self.x + self.w * 0.5) * 20
-                z = self.y * 20 + 10
-            elif self.rotation == 1:
-                x = self.x * 20 + 10
-                z = (self.y + self.w * 0.5) * 20
-            elif self.rotation == 3:
-                x = (self.x + self.l) * 20 - 10
-                z = (self.y + self.w * 0.5) * 20
+            # h=2 cheese slopes: centered formula (no ±10 offset)
+            # h=3 slopes: original formula with ±10 offset for rotation consistency
+            if self.h == 2:
+                # Cheese slopes: use centered formula
+                if self.rotation == 0:
+                    x = (self.x + self.w * 0.5) * 20
+                    z = (self.y + self.l * 0.5) * 20
+                elif self.rotation == 2:
+                    x = (self.x + self.w * 0.5) * 20
+                    z = (self.y + self.l * 0.5) * 20
+                elif self.rotation == 1:
+                    x = (self.x + self.l * 0.5) * 20
+                    z = (self.y + self.w * 0.5) * 20
+                elif self.rotation == 3:
+                    x = (self.x + self.l * 0.5) * 20
+                    z = (self.y + self.w * 0.5) * 20
+            else:
+                # h=3 and other slopes: use original formula with ±10 offset
+                if self.rotation == 0:
+                    x = (self.x + self.w * 0.5) * 20
+                    z = (self.y + self.l) * 20 - 10
+                elif self.rotation == 2:
+                    x = (self.x + self.w * 0.5) * 20
+                    z = self.y * 20 + 10
+                elif self.rotation == 1:
+                    x = self.x * 20 + 10
+                    z = (self.y + self.w * 0.5) * 20
+                elif self.rotation == 3:
+                    x = (self.x + self.l) * 20 - 10
+                    z = (self.y + self.w * 0.5) * 20
         else:
             x = (self.x + self.l * 0.5) * 20
             z = (self.y + self.w * 0.5) * 20
