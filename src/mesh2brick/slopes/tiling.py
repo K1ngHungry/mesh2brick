@@ -3,7 +3,7 @@
 import numpy as np
 import open3d as o3d
 
-from mesh2brick.data.brick_structure import Brick
+from mesh2brick.data.brick_structure import Brick, SlopeBrick, _SLOPE_DIR_TO_ROTATION
 from .detection import SlopeRegion
 
 
@@ -24,54 +24,7 @@ def _region_voxel_bounds(
     return mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2]
 
 
-def _slope_direction_to_rotation(slope_direction: int) -> int:
-    """Map slope_direction (0=+X, 1=+Y, 2=-X, 3=-Y) to brick rotation."""
-    mapping = {0: 1, 1: 2, 2: 3, 3: 0}
-    return mapping[slope_direction]
-
-
-def _physical_footprint(brick_l: int, brick_w: int, rotation: int) -> tuple[int, int]:
-    if rotation % 2 == 0:
-        return brick_w, brick_l
-    return brick_l, brick_w
-
-
-def _slope_region_slice(
-    brick: Brick, slope_direction: int,
-) -> tuple[tuple[slice, slice, slice], tuple[slice, slice, slice] | None]:
-    """Return (slope_slice, stud_slice) for the sloping vs stud portions.
-
-    For h=3 l=2 bricks: one column is stud (full height), one is slope.
-    For h=2 or l=1 bricks: entire footprint is slope, stud_slice is None.
-    """
-    sx, sy, sz = brick.slice
-    run = brick.l - 1 if brick.h == 3 and brick.l > 1 else brick.l
-    if run == brick.l:
-        return (sx, sy, sz), None
-
-    # h=3, l=2: one column is stud, one is slope
-    # The stud is at the HIGH end of the slope direction (where the slope rises to)
-    if slope_direction in (0, 2):
-        # X-axis slope: split along x
-        if slope_direction == 0:  # +X: slope rises toward +X, stud at high x
-            slope_x = slice(sx.start, sx.start + 1)
-            stud_x = slice(sx.stop - 1, sx.stop)
-        else:  # -X: slope rises toward -X, stud at low x
-            slope_x = slice(sx.stop - 1, sx.stop)
-            stud_x = slice(sx.start, sx.start + 1)
-        return (slope_x, sy, sz), (stud_x, sy, sz)
-    else:
-        # Y-axis slope: split along y
-        if slope_direction == 1:  # +Y: stud at high y
-            slope_y = slice(sy.start, sy.start + 1)
-            stud_y = slice(sy.stop - 1, sy.stop)
-        else:  # -Y: stud at low y
-            slope_y = slice(sy.stop - 1, sy.stop)
-            stud_y = slice(sy.start, sy.start + 1)
-        return (sx, slope_y, sz), (sx, stud_y, sz)
-
-
-def _merge_slope_bricks(
+def _merge_slopes(
     bricks: list[Brick],
     slope_direction: int,
     matched_bricks: list[dict],
@@ -151,9 +104,9 @@ def _merge_slope_bricks(
                         break
                 if len(run) == count:
                     b0 = group[run[0]]
-                    merged.append(Brick(
-                        type=1, l=base.l, w=w, h=base.h,
-                        rotation=b0.rotation, x=b0.x, y=b0.y, z=b0.z))
+                    merged.append(SlopeBrick(
+                        l=base.l, w=w, h=base.h,
+                        slope_direction=slope_direction, x=b0.x, y=b0.y, z=b0.z))
                     for idx in run:
                         used[idx] = True
                     placed = True
@@ -164,16 +117,15 @@ def _merge_slope_bricks(
     return merged
 
 
-def _tile_rigid_block(
+def _tile_candidates(
     slope_direction: int,
     x_min: int, y_min: int, z_min: int,
     n_x: int, n_y: int, n_z: int,
     brick_l: int, brick_w: int, brick_h: int,
-    foot_x: int, foot_y: int,
+    dim_x: int, dim_y: int,
     step_x: int, step_y: int,
-    rotation: int,
     world_shape: tuple[int, ...]
-) -> list[Brick]:
+) -> list[SlopeBrick]:
     """Place a staircase of slope bricks for one region."""
     placed = []
     for step_z in range(n_z):
@@ -200,12 +152,12 @@ def _tile_rigid_block(
 
         for ix in range(max(1, n_step_x)):
             for iy in range(max(1, n_step_y)):
-                x = (start_x if slope_direction in (0, 2) else x_min + ix * foot_x)
-                y = (start_y if slope_direction in (1, 3) else y_min + iy * foot_y)
+                x = (start_x if slope_direction in (0, 2) else x_min + ix * dim_x)
+                y = (start_y if slope_direction in (1, 3) else y_min + iy * dim_y)
 
-                if x >= 0 and y >= 0 and x + foot_x <= world_shape[0] and y + foot_y <= world_shape[1]:
-                    placed.append(Brick(type=1, l=brick_l, w=brick_w, h=brick_h,
-                                        rotation=rotation, x=int(x), y=int(y), z=int(z)))
+                if x >= 0 and y >= 0 and x + dim_x <= world_shape[0] and y + dim_y <= world_shape[1]:
+                    placed.append(SlopeBrick(l=brick_l, w=brick_w, h=brick_h,
+                                             slope_direction=slope_direction, x=int(x), y=int(y), z=int(z)))
     return placed
 
 
@@ -215,10 +167,29 @@ def place_slope_bricks(
     assignments: list[tuple[SlopeRegion, list[dict]]],
     voxel_origin: np.ndarray | None = None,
     region_n_steps: list[int] | None = None,
-) -> tuple[list[Brick], np.ndarray]:
-    """Place slope bricks and return (slope_bricks, remaining_voxels)."""
+    verbose: bool = False,
+) -> tuple[list[SlopeBrick], np.ndarray]:
+    """Place slope bricks and return (slope_bricks, remaining_voxels).
+
+    For each slope region, generates a staircase of candidate bricks via
+    _tile_candidates, then validates each candidate top-down:
+
+    1. Bounds check — brick must fit within the voxel grid.
+    2. Overlap check — brick must not overlap already-placed slope bricks.
+    3. Support check — if the brick's footprint has no remaining voxels,
+       it is still accepted at ridges (where two slopes meet) if voxels
+       exist in the layer directly below. Otherwise rejected.
+    4. Noise check — stray voxels in the air triangle (h=3) or above the
+       bbox (h=2) are tolerated up to a threshold, then cleared.
+    5. Above check — if more than one voxel exists above the slope column
+       in the original grid, the brick is rejected (indicates solid geometry
+       above, not a slope surface).
+
+    Accepted bricks have their voxels cleared from `remaining`, then are
+    merged into wider bricks where possible.
+    """
     remaining = voxels.astype(bool).copy()
-    slope_bricks: list[Brick] = []
+    slope_bricks: list[SlopeBrick] = []
     world_shape = voxels.shape
 
     if voxel_origin is None:
@@ -233,12 +204,11 @@ def place_slope_bricks(
         brick_l = best_brick_info['length']
         brick_w = best_brick_info['width']
         brick_h = best_brick_info['height']
-        rotation = _slope_direction_to_rotation(region.slope_direction)
-        foot_x, foot_y = _physical_footprint(brick_l, brick_w, rotation)
+        rotation = _SLOPE_DIR_TO_ROTATION[region.slope_direction]
+        dim_x, dim_y = SlopeBrick.rotated_dim(brick_l, brick_w, rotation)
 
-        # Effective run for staircase step advance (h=3 slopes have a stud on top)
         run = brick_l - 1 if brick_h == 3 and brick_l > 1 else brick_l
-        step_x, step_y = _physical_footprint(run, brick_w, rotation)
+        step_x, step_y = SlopeBrick.rotated_dim(run, brick_w, rotation)
 
         x_min, x_max, y_min, y_max, z_min, z_max = _region_voxel_bounds(
             mesh, region, voxel_origin)
@@ -251,94 +221,70 @@ def place_slope_bricks(
         else:
             n_z = max(1, round((z_max - z_min + 1) / brick_h))
 
-        # Cap n_z so the staircase doesn't exceed the horizontal extent
         if region.slope_direction in (0, 2):
             n_z = min(n_z, n_x)
         elif region.slope_direction in (1, 3):
             n_z = min(n_z, n_y)
 
-        placed = _tile_rigid_block(
+        placed = _tile_candidates(
             region.slope_direction,
             x_min, y_min, z_min,
             n_x, n_y, n_z,
-            brick_l, brick_w, brick_h, foot_x, foot_y,
-            step_x, step_y, rotation, world_shape
+            brick_l, brick_w, brick_h, dim_x, dim_y,
+            step_x, step_y, world_shape
         )
 
-        # Process top-down so higher steps clear voxels before lower steps check above
         placed.sort(key=lambda b: -b.z)
         accepted = []
-        # Track rejection reasons for diagnostics
         rejected_bounds = rejected_no_voxels = rejected_noise = rejected_above = 0
         for brick in placed:
             sx, sy, sz = brick.slice
+
+            # Bounds check
             if sx.stop > world_shape[0] or sy.stop > world_shape[1] or sz.stop > world_shape[2]:
                 rejected_bounds += 1
                 continue
 
-            # Check if brick would overlap with already-placed slope bricks from other regions
-            would_overlap = False
-            for existing in slope_bricks:
-                if existing.type != 1:
-                    continue
-                esx, esy, esz = existing.slice
-                bsx, bsy, bsz = brick.slice
-                if (esx.start < bsx.stop and bsx.start < esx.stop and
-                        esy.start < bsy.stop and bsy.start < esy.stop and
-                        esz.start < bsz.stop and bsz.start < esz.stop):
-                    would_overlap = True
-                    break
-            if would_overlap:
+            # Overlap check
+            if any(brick.overlaps(existing) for existing in slope_bricks if existing.type == 1):
                 rejected_no_voxels += 1
                 continue
 
-            # Check if brick has no voxels - if so, verify it's supported from below
+            # Support check
             if not remaining[brick.slice].any():
                 sx, sy, sz = brick.slice
-                if brick.z > 0:
-                    voxels_below = voxels[sx, sy, brick.z - 1]
-                    if not voxels_below.any():
-                        # No voxels and no support below - floating brick
-                        rejected_no_voxels += 1
-                        continue
+                if brick.z > 0 and voxels[sx, sy, brick.z - 1].any():
+                    pass  # Ridge — supported from below
                 else:
-                    # At ground level with no voxels - reject
                     rejected_no_voxels += 1
                     continue
 
-            # Brick has voxels - check noise in air triangle and voxels above
-            slope_sl, stud_sl = _slope_region_slice(brick, region.slope_direction)
+            # Noise check
+            slope_sl, stud_sl = brick.slope_slice()
             slope_sx, slope_sy, slope_sz = slope_sl
 
             if stud_sl is not None:
-                # h=3: check air triangle within bounding box (z+1 to z+h)
                 air_start = brick.z + 1
                 air_end = min(brick.z + brick_h, world_shape[2])
                 noise_count = int(remaining[slope_sx, slope_sy, air_start:air_end].sum()) if air_start < air_end else 0
             else:
-                # h=2: check one voxel above the bounding box
                 z_above = brick.z + brick_h
                 noise_count = int(remaining[slope_sx, slope_sy, z_above:z_above + 1].sum()) if z_above < world_shape[2] else 0
 
-            # For h=3: the air triangle spans brick_h-1 voxels; all expected to be filled
-            # For h=2: at most 1 stray voxel above is tolerable
             max_noise = (brick_h - 1) if stud_sl is not None else 1
             if noise_count > max_noise:
                 rejected_noise += 1
                 continue
 
-            # Check the full column above the bbox in the sloping column
-            # using the ORIGINAL voxel grid (not remaining, modified by higher steps)
+            # Above check (uses original voxel grid, not remaining)
             z_above = brick.z + brick_h
             above_count = int(voxels[slope_sx, slope_sy, z_above:].sum()) if z_above < world_shape[2] else 0
             if above_count > 1:
                 rejected_above += 1
                 continue
 
-            # Clear the brick's voxels
+            # Accept: clear voxels
             remaining[brick.slice] = False
-
-            # Clear air triangle and single stray voxel above
             if 0 < noise_count <= max_noise:
                 if stud_sl is not None:
                     remaining[slope_sx, slope_sy, air_start:air_end] = False
@@ -349,14 +295,12 @@ def place_slope_bricks(
 
             accepted.append(brick)
 
-        final = accepted
-        final = _merge_slope_bricks(final, region.slope_direction, matched_bricks, n_y if region.slope_direction in (0, 2) else n_x)
+        n_lateral = n_y if region.slope_direction in (0, 2) else n_x
+        final = _merge_slopes(accepted, region.slope_direction, matched_bricks, n_lateral)
         slope_bricks.extend(final)
 
-        # Print rejection diagnostics
-        total_candidates = len(placed)
-        if total_candidates > 0:
-            print(f"    Region {region_idx}: {len(final)}/{total_candidates} placed "
+        if verbose and placed:
+            print(f"    Region {region_idx}: {len(final)}/{len(placed)} placed "
                   f"(rejected: bounds={rejected_bounds}, no_voxels={rejected_no_voxels}, "
                   f"noise={rejected_noise}, above={rejected_above})")
 

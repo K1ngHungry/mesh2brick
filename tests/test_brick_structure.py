@@ -1,5 +1,5 @@
 import pytest
-from mesh2brick.data.brick_structure import Brick, BrickStructure
+from mesh2brick.data.brick_structure import Brick, SlopeBrick, BrickStructure
 
 
 def test_brick():
@@ -46,12 +46,14 @@ def test_slope_brick():
     brick_json = {'brick_id': 201, 'x': 0, 'y': 0, 'z': 0, 'type': 1, 'rotation': 0}
 
     for brick in [Brick.from_json(brick_json), Brick.from_txt(brick_txt)]:
+        assert isinstance(brick, SlopeBrick)
         assert brick.brick_id == 201
         assert brick.type == 1
         assert brick.l == 2
         assert brick.w == 2
         assert brick.h == 3
         assert brick.rotation == 0
+        assert brick.slope_direction == 3  # rotation 0 -> slope_direction 3 (-Y)
         assert brick.to_json() == brick_json
         assert brick.to_txt() == brick_txt
 
@@ -62,11 +64,13 @@ def test_slope_brick_rotated():
     brick_json = {'brick_id': 202, 'x': 0, 'y': 0, 'z': 0, 'type': 1, 'rotation': 1}
 
     for brick in [Brick.from_json(brick_json), Brick.from_txt(brick_txt)]:
+        assert isinstance(brick, SlopeBrick)
         assert brick.brick_id == 202
         assert brick.type == 1
         assert brick.l == 2
         assert brick.w == 4
         assert brick.rotation == 1
+        assert brick.slope_direction == 0  # rotation 1 -> slope_direction 0 (+X)
         assert brick.to_json() == brick_json
         assert brick.to_txt() == brick_txt
 
@@ -75,6 +79,7 @@ def test_slope_roundtrip_ldr():
     # 2x2x3 slope: x_center=1*20=20, z_center=1*20=20, y=-(3)*8=-24
     brick_ldr = '1 115 20.0 -24 20.0 1 0 0 0 1 0 0 0 1 3039.DAT'
     brick = Brick.from_ldr(brick_ldr)
+    assert isinstance(brick, SlopeBrick)
     assert brick.type == 1
     assert brick.brick_id == 201
     assert brick.rotation == 0

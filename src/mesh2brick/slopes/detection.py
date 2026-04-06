@@ -94,6 +94,7 @@ def detect_features(
     normal_deg_err: float = 10.0,
     min_area_fraction: float = 0.01,
     min_plane_faces: int = 3,
+    verbose: bool = False,
 ) -> Features:
     """Detect both sloped surface regions and flat axis-aligned planes on a mesh.
 
@@ -174,11 +175,13 @@ def detect_features(
         # Skip downward-facing slopes (bottom/interior surfaces)
         # These create duplicate opposing regions that cause brick overlaps
         if avg_normal[2] < 0:
-            print(f"  [FILTERED] Downward slope: nz={avg_normal[2]:.3f}, angle={math.degrees(math.acos(min(abs(avg_normal[2]), 1.0))):.1f}°")
+            if verbose:
+                print(f"  [FILTERED] Downward slope: nz={avg_normal[2]:.3f}, angle={math.degrees(math.acos(min(abs(avg_normal[2]), 1.0))):.1f}°")
             continue
 
         slope_angle = math.degrees(math.acos(min(abs(avg_normal[2]), 1.0)))
-        print(f"  Region: nz={avg_normal[2]:.3f}, angle={slope_angle:.1f}°, dir={_to_cardinal(np.array([avg_normal[0], avg_normal[1]]))}")
+        if verbose:
+            print(f"  Region: nz={avg_normal[2]:.3f}, angle={slope_angle:.1f}°, dir={_to_cardinal(np.array([avg_normal[0], avg_normal[1]]))}")
 
         direction = np.array([avg_normal[0], avg_normal[1]])
         if np.linalg.norm(direction) < 1e-10:
@@ -284,8 +287,13 @@ def match_slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = 
     matches.sort(key=lambda b: b['length'] * b['width'], reverse=True)
     return matches
 
-def iso_to_voxel_angle(iso_angle: float, z_scale: float = 3.0) -> float:
-    return math.degrees(math.atan(z_scale * math.tan(math.radians(iso_angle))))
+def mesh_angle_to_voxel_angle(mesh_angle: float, z_scale: float = 3.0) -> float:
+    """Convert slope angle in mesh space to angle in voxel space.
+
+    Mesh space is isometric (1:1:1) but voxel space is stretched 3x in Z
+    to account for plate heights, changing the perceived slope angle.
+    """
+    return math.degrees(math.atan(z_scale * math.tan(math.radians(mesh_angle))))
 
 def compute_optimal_scale(
     regions: list[SlopeRegion],
@@ -300,7 +308,7 @@ def compute_optimal_scale(
 
     region_info: list[tuple[SlopeRegion, list[dict], float]] = []
     for region in regions:
-        voxel_angle = iso_to_voxel_angle(region.slope_angle)
+        voxel_angle = mesh_angle_to_voxel_angle(region.slope_angle)
         matched = match_slope_to_bricks(voxel_angle, slope_bricks)
         if not matched or region.length <= 0 or region.width <= 0:
             continue
