@@ -5,6 +5,7 @@ import open3d as o3d
 
 from mesh2brick.data.brick_structure import Brick, SlopeBrick, _SLOPE_DIR_TO_ROTATION
 from .detection import SlopeRegion
+from .utils import slope_run
 
 
 def _region_voxel_bounds(
@@ -166,7 +167,6 @@ def place_slope_bricks(
     mesh: o3d.geometry.TriangleMesh,
     assignments: list[tuple[SlopeRegion, list[dict]]],
     voxel_origin: np.ndarray | None = None,
-    region_n_steps: list[int] | None = None,
     verbose: bool = False,
 ) -> tuple[list[SlopeBrick], np.ndarray]:
     """Place slope bricks and return (slope_bricks, remaining_voxels).
@@ -204,10 +204,10 @@ def place_slope_bricks(
         brick_l = best_brick_info['length']
         brick_w = best_brick_info['width']
         brick_h = best_brick_info['height']
-        rotation = _SLOPE_DIR_TO_ROTATION[region.slope_direction]
+        rotation = _SLOPE_DIR_TO_ROTATION[region.direction]
         dim_x, dim_y = SlopeBrick.rotated_dim(brick_l, brick_w, rotation)
 
-        run = brick_l - 1 if brick_h == 3 and brick_l > 1 else brick_l
+        run = slope_run(brick_l, brick_h)
         step_x, step_y = SlopeBrick.rotated_dim(run, brick_w, rotation)
 
         x_min, x_max, y_min, y_max, z_min, z_max = _region_voxel_bounds(
@@ -216,18 +216,15 @@ def place_slope_bricks(
         n_x = max(1, round((x_max - x_min + 1) / step_x))
         n_y = max(1, round((y_max - y_min + 1) / step_y))
 
-        if region_n_steps is not None:
-            n_z = region_n_steps[region_idx]
-        else:
-            n_z = max(1, round((z_max - z_min + 1) / brick_h))
+        n_z = max(1, round((z_max - z_min + 1) / brick_h))
 
-        if region.slope_direction in (0, 2):
+        if region.direction in (0, 2):
             n_z = min(n_z, n_x)
-        elif region.slope_direction in (1, 3):
+        elif region.direction in (1, 3):
             n_z = min(n_z, n_y)
 
         placed = _tile_candidates(
-            region.slope_direction,
+            region.direction,
             x_min, y_min, z_min,
             n_x, n_y, n_z,
             brick_l, brick_w, brick_h, dim_x, dim_y,
@@ -295,8 +292,8 @@ def place_slope_bricks(
 
             accepted.append(brick)
 
-        n_lateral = n_y if region.slope_direction in (0, 2) else n_x
-        final = _merge_slopes(accepted, region.slope_direction, matched_bricks, n_lateral)
+        n_lateral = n_y if region.direction in (0, 2) else n_x
+        final = _merge_slopes(accepted, region.direction, matched_bricks, n_lateral)
         slope_bricks.extend(final)
 
         if verbose and placed:

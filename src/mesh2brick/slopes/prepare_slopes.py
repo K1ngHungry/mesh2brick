@@ -9,21 +9,36 @@ from .deformation import deform_mesh, apply_scale, DeformationResult
 
 @dataclass
 class SlopeConfig:
-    planar_deg_err: float = 10.0
-    normal_deg_err: float = 1.0
-    min_area_fraction: float = 0.01
+    """Configuration for slope detection.
+
+    planar_err: Max angle (degrees) between a face normal and the region's
+        average normal for the face to be considered coplanar.
+    normal_err: Max angle (degrees) between adjacent face normals for them
+        to be grouped into the same region.
+    min_area: Minimum region area as a fraction of total mesh area.
+    """
+    planar_err: float = 10.0
+    normal_err: float = 1.0
+    min_area: float = 0.01
 
 
 @dataclass
 class SlopeResult:
-    """Output of the slope detection + deformation pipeline."""
+    """Output of the slope detection + deformation pipeline.
+
+    mesh: The scaled (and optionally deformed) mesh ready for voxelization.
+    scale: The voxel scale factor applied to the mesh
+    world_dim: Voxel grid dimensions (x, y, z) derived from mesh bounds
+    assignments: Each detected slope region paired with its matching brick
+    regions: All detected slope regions
+    deformation: Vertex deformation details, or None if no slopes found
+    """
     mesh: o3d.geometry.TriangleMesh
     scale: float
     world_dim: tuple[int, int, int]
     assignments: list[tuple[SlopeRegion, list[dict]]]
     regions: list[SlopeRegion]
     deformation: DeformationResult | None
-    region_n_steps: list[int] | None = None
 
 
 def prepare_slopes(
@@ -31,11 +46,21 @@ def prepare_slopes(
     resolution: int = 20,
     cfg: SlopeConfig = SlopeConfig(),
 ) -> SlopeResult:
+    """Detect slope regions, scale and deform the mesh for brick tiling.
+
+    1. Detects slope regions and flat planes on the mesh.
+    2. Computes an optimal voxel scale that aligns slope dimensions to
+       available brick sizes.
+    3. If slopes were found, deforms the mesh so slope surfaces align to
+       the voxel grid; otherwise just applies uniform scaling.
+    4. Applies Z-scale (x3) for plate height compensation.
+    5. Computes world_dim from the resulting mesh bounds.
+    """
     features = detect_features(
         mesh,
-        planar_deg_err=cfg.planar_deg_err,
-        normal_deg_err=cfg.normal_deg_err,
-        min_area_fraction=cfg.min_area_fraction,
+        planar_err=cfg.planar_err,
+        normal_err=cfg.normal_err,
+        min_area=cfg.min_area,
     )
 
     optimal_scale, assignments = compute_optimal_scale(
@@ -54,12 +79,10 @@ def prepare_slopes(
     else:
         mesh = apply_scale(mesh, optimal_scale)
 
-    # Z-scale for plate height compensation
     vertices = np.asarray(mesh.vertices)
     vertices[:, 2] *= 3.0
     mesh.vertices = o3d.utility.Vector3dVector(vertices)
 
-    # Compute world_dim from actual mesh bounds (deformation can expand the mesh)
     extent = np.asarray(mesh.get_max_bound()) - np.asarray(mesh.get_min_bound())
     world_dim = (
         max(s, int(np.ceil(extent[0]))),
@@ -74,5 +97,4 @@ def prepare_slopes(
         assignments=assignments,
         regions=features.regions,
         deformation=deformation,
-        region_n_steps=None,
     )

@@ -72,8 +72,8 @@ def _make_region(slope_angle=45.0, length=0.3, width=0.2, direction=0,
         face_indices=face_indices or [0],
         avg_normal=np.array([0.5, 0.0, 0.5]),
         area=1.0,
-        slope_angle=slope_angle,
-        slope_direction=direction,
+        angle=slope_angle,
+        direction=direction,
         length=length,
         width=width,
         height=0.1,
@@ -142,10 +142,10 @@ class TestResizeSlopeRegions:
     def test_dimensions_become_brick_multiples(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_features(scaled, min_area_fraction=0.05).regions
+        regions = detect_features(scaled, min_area=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
-        bricks = match_slope_to_bricks(regions[0].slope_angle)
+        bricks = match_slope_to_bricks(regions[0].angle)
         assignments = [(regions[0], bricks)]
 
         target_pos, splits, region_verts, _ = resize_slope_regions(scaled, assignments)
@@ -159,7 +159,7 @@ class TestResizeSlopeRegions:
 
         brick = min(bricks, key=lambda b: b['length'] * b['width'])
         # The length-axis dimension should be a multiple of brick length
-        if region.slope_direction in (0, 2):
+        if region.direction in (0, 2):
             length_dim = dims[0]
             width_dim = dims[1]
         else:
@@ -175,10 +175,10 @@ class TestResizeSlopeRegions:
     def test_split_vertices_identified(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_features(scaled, min_area_fraction=0.05).regions
+        regions = detect_features(scaled, min_area=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
-        bricks = match_slope_to_bricks(regions[0].slope_angle)
+        bricks = match_slope_to_bricks(regions[0].angle)
         assignments = [(regions[0], bricks)]
 
         _, splits, _, _ = resize_slope_regions(scaled, assignments)
@@ -199,10 +199,10 @@ class TestResizeSlopeRegions:
     def test_region_vert_indices_returned(self):
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_features(scaled, min_area_fraction=0.05).regions
+        regions = detect_features(scaled, min_area=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
-        bricks = match_slope_to_bricks(regions[0].slope_angle)
+        bricks = match_slope_to_bricks(regions[0].angle)
         assignments = [(regions[0], bricks)]
 
         _, _, region_verts, _ = resize_slope_regions(scaled, assignments)
@@ -220,7 +220,7 @@ class TestDeformMesh:
 
     def test_ramp_returns_result(self):
         ramp = _make_ramp(45.0, width=3.0)
-        features = detect_features(ramp, min_area_fraction=0.05)
+        features = detect_features(ramp, min_area=0.05)
         regions = features.regions
         if not regions:
             pytest.skip("No slopes detected on raw ramp")
@@ -236,7 +236,7 @@ class TestDeformMesh:
     def test_corner_vertices_near_integer(self):
         """After deformation, corner vertices should be close to integers."""
         ramp = _make_ramp(45.0, width=3.0)
-        features = detect_features(ramp, min_area_fraction=0.05)
+        features = detect_features(ramp, min_area=0.05)
         regions = features.regions
         if not regions:
             pytest.skip("No slopes detected")
@@ -255,7 +255,7 @@ class TestDeformMesh:
 
     def test_house_with_roof(self):
         house = _make_house()
-        features = detect_features(house, min_area_fraction=0.05)
+        features = detect_features(house, min_area=0.05)
         regions = features.regions
         if not regions:
             pytest.skip("No slopes detected on house")
@@ -271,7 +271,7 @@ class TestDeformMesh:
         """All vertices in a region should move by the same translation."""
         ramp = _make_ramp(45.0, width=3.0)
         scaled = apply_scale(ramp, 10.0)
-        regions = detect_features(scaled, min_area_fraction=0.05).regions
+        regions = detect_features(scaled, min_area=0.05).regions
         if not regions:
             pytest.skip("No slopes detected")
         _, assignments = compute_optimal_scale(regions, default_scale=10.0)

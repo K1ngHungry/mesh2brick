@@ -187,10 +187,20 @@ class SlopeBrick(Brick):
         object.__setattr__(
             self, 'rotation', _SLOPE_DIR_TO_ROTATION[self.slope_direction])
 
+    @staticmethod
+    def run(length: int, height: int) -> int:
+        """Effective horizontal advance per staircase step.
+
+        For h=3 slope bricks with length > 1, the top stud column overlaps
+        the next step, so the run is length - 1.  All other bricks advance
+        by their full length.
+        """
+        return length - 1 if height == 3 and length > 1 else length
+
     @property
     def angle(self) -> float:
-        """Slope angle in degrees (atan(h/l))."""
-        return math.degrees(math.atan(self.h / self.l))
+        """Slope angle in degrees (atan(h/run))."""
+        return math.degrees(math.atan(self.h / SlopeBrick.run(self.l, self.h)))
 
     @property
     def slice_2d(self) -> (slice, slice):
@@ -223,7 +233,7 @@ class SlopeBrick(Brick):
         bricks, the entire footprint is slope and stud_slice is None.
         """
         sx, sy, sz = self.slice
-        run = self.l - 1 if self.h == 3 and self.l > 1 else self.l
+        run = SlopeBrick.run(self.l, self.h)
         if run == self.l:
             return (sx, sy, sz), None
 

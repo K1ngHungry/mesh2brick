@@ -5,6 +5,7 @@ coordinates with dimensions that are exact multiples of slope brick sizes.
 """
 import copy
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,7 +14,7 @@ from scipy.optimize import minimize
 from scipy.spatial import cKDTree
 
 from .detection import SlopeRegion, Plane
-from .utils import build_face_adjacency, normal_angle_diff
+from .utils import build_face_adjacency, normal_angle_diff, slope_run
 
 
 @dataclass
@@ -39,6 +40,7 @@ def apply_scale(
     mesh: o3d.geometry.TriangleMesh,
     scale: float,
 ) -> o3d.geometry.TriangleMesh:
+    """Return a deep copy of mesh with all vertices multiplied by scale."""
     new_mesh = copy.deepcopy(mesh)
     vertices = np.asarray(new_mesh.vertices)
     vertices *= scale
@@ -52,6 +54,19 @@ def _classify_vertices(
     assignments: list[tuple[SlopeRegion, list[dict]]],
     position_tol: float = 1e-6,
 ) -> tuple[list[np.ndarray], list[int], dict[int, int], dict[int, int]]:
+    """Classify mesh vertices into slope-only, non-slope-only, and split.
+
+    Split vertices are shared between slope and non-slope faces and need
+    special handling during optimization.  Also detects coincident vertices
+    (topologically separate but at the same position) between the two sets
+    so they can be kept in sync.
+
+    Returns:
+        region_vert_indices: vertex indices belonging to each slope region.
+        split_indices: vertices shared between slope and non-slope faces.
+        vert_to_region: maps each slope vertex to its first region index.
+        coincident_map: maps non-slope vertices to their coincident slope vertex.
+    """
     slope_faces: set[int] = set()
     for region, _bricks in assignments:
         slope_faces.update(region.face_indices)
@@ -105,6 +120,13 @@ def _resize_region(
     bricks: list[dict],
     vert_indices: np.ndarray,
 ) -> None:
+    """Scale a single slope region so its dimensions are brick multiples.
+
+    Width is snapped to the nearest multiple of brick width.  Length is
+    snapped to a staircase grid (using run = l-1 for h=3 bricks), and
+    height is derived from length to preserve the brick's slope angle.
+    Writes resized positions into *target* in place.
+    """
     region_verts = vertices[vert_indices]
     if len(region_verts) == 0:
         return
@@ -116,7 +138,7 @@ def _resize_region(
 
     brick = min(bricks, key=lambda b: b['length'] * b['width'])
 
-    if region.slope_direction in (0, 2):  # X-aligned slope
+    if region.direction in (0, 2):  # X-aligned slope
         length_axis, width_axis = 0, 1
     else:  # Y-aligned slope
         length_axis, width_axis = 1, 0
@@ -131,7 +153,7 @@ def _resize_region(
     # Snap length to grid, then derive height to enforce the brick's angle
     # For h=3 slopes, the stud column overlaps between steps, so advance = run
     if region_dims[length_axis] > 0:
-        run = brick['length'] - 1 if brick['height'] == 3 and brick['length'] > 1 else brick['length']
+        run = slope_run(brick['length'], brick['height'])
         n_steps = max(1, round(region_dims[length_axis] / run))
         target_l = (n_steps - 1) * run + brick['length']
         scale_factors[length_axis] = target_l / region_dims[length_axis]
@@ -148,6 +170,18 @@ def resize_slope_regions(
     mesh: o3d.geometry.TriangleMesh,
     assignments: list[tuple[SlopeRegion, list[dict]]],
 ) -> tuple[np.ndarray, list[SplitVertex], list[np.ndarray], dict[int, int]]:
+    """Resize all slope regions to brick-multiple dimensions.
+
+    Each region is independently scaled via _resize_region, then vertices
+    shared by multiple regions are averaged.  Ridge vertices (coincident
+    across regions) are snapped together via union-find.
+
+    Returns:
+        target: vertex positions after resizing.
+        split_vertices: vertices shared between slope and non-slope faces.
+        region_vert_indices: vertex indices per region.
+        coincident_map: non-slope → slope vertex mapping for coincident points.
+    """
     faces = np.asarray(mesh.triangles)
     vertices = np.asarray(mesh.vertices)
     target = vertices.copy()
@@ -197,7 +231,6 @@ def resize_slope_regions(
                 ri, rj = _find(i), _find(j)
                 if ri != rj:
                     parent[ri] = rj
-        from collections import defaultdict
         groups: dict[int, list[int]] = defaultdict(list)
         for idx in range(len(all_slope_verts)):
             groups[_find(idx)].append(idx)
@@ -237,6 +270,18 @@ def _energy_and_gradient(
     lambda_t: float,
     lambda_p: float,
 ) -> tuple[float, np.ndarray]:
+    """Compute deformation energy and its analytical gradient for L-BFGS-B.
+
+    The energy has three terms:
+    1. Grid snap — penalises region corner vertices for being off-integer.
+    2. Split continuity — penalises the gap between slope-side and mesh-side
+       positions of split vertices (weighted by lambda_t).
+    3. Plane preservation — penalises deviation of split and plane vertices
+       from their detected flat planes (weighted by lambda_p).
+
+    The optimisation variable *x* packs per-region translations, split vertex
+    positions, and plane vertex positions into a single flat vector.
+    """
     n_split = len(split_vertices)
     n_plane = len(plane_vertex_indices)
     split_offset = 3 * n_regions
@@ -295,6 +340,17 @@ def optimize_vertices(
     lambda_p: float = 4.0,
     max_iter: int = 200,
 ) -> tuple[np.ndarray, float]:
+    """Run L-BFGS-B to find per-region translations that snap corners to the grid.
+
+    Builds the optimisation problem from resized vertex positions, then
+    solves for translations that minimise _energy_and_gradient.  After
+    solving, applies the averaged translations to slope vertices and
+    averages the slope/mesh sides for split vertices.
+
+    Returns:
+        optimized: final vertex positions.
+        final_energy: the energy at the optimum.
+    """
     n_regions = len(region_vert_indices)
     n_split = len(split_vertices)
     n_verts = len(resized_positions)
@@ -398,6 +454,15 @@ def deform_mesh(
     lambda_p: float = 4.0,
     max_iter: int = 200,
 ) -> DeformationResult:
+    """Top-level deformation pipeline: scale, resize, optimise.
+
+    1. Scales the mesh to voxel space.
+    2. Resizes slope regions to brick-multiple dimensions.
+    3. Identifies bounding-box corner vertices per region.
+    4. Runs L-BFGS-B optimisation to snap corners to the integer grid
+       while preserving flat planes and split-vertex continuity.
+    5. Syncs coincident vertices.
+    """
     scaled_mesh = apply_scale(mesh, scale)
     
     # Scale plane offsets natively to work on the scaled voxel grid

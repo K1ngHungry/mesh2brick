@@ -84,10 +84,10 @@ class TestDetectSlopes:
     def test_ramp_45(self):
         """A 45° ramp should produce one slope region near 45°."""
         mesh = _make_ramp(angle_deg=45.0, width=5.0)
-        regions = detect_features(mesh, min_area_fraction=0.05).regions
+        regions = detect_features(mesh, min_area=0.05).regions
         assert len(regions) >= 1
         # Find the region closest to 45°
-        angles = [r.slope_angle for r in regions]
+        angles = [r.angle for r in regions]
         closest = min(angles, key=lambda a: abs(a - 45.0))
         assert abs(closest - 45.0) < 5.0
 
@@ -100,9 +100,9 @@ class TestDetectSlopes:
     def test_pyramid_four_directions(self):
         """A pyramid should detect 4 slope regions with 4 different directions."""
         mesh = _make_pyramid(base_size=4.0, height=4.0)
-        regions = detect_features(mesh, min_area_fraction=0.01).regions
+        regions = detect_features(mesh, min_area=0.01).regions
         assert len(regions) == 4
-        directions = sorted([r.slope_direction for r in regions])
+        directions = sorted([r.direction for r in regions])
         assert directions == [0, 1, 2, 3]
 
     def test_small_slope_filtered(self):
@@ -110,24 +110,24 @@ class TestDetectSlopes:
         # Create a box with a tiny chamfer (sloped face)
         mesh = _make_box()
         # The box has all axis-aligned faces, so no slopes detected
-        regions = detect_features(mesh, min_area_fraction=0.1).regions
+        regions = detect_features(mesh, min_area=0.1).regions
         assert len(regions) == 0
 
     def test_steep_slope(self):
         """A steep slope (~63°) should be detected with the right angle."""
         mesh = _make_ramp(angle_deg=63.0, width=5.0)
-        regions = detect_features(mesh, min_area_fraction=0.05).regions
+        regions = detect_features(mesh, min_area=0.05).regions
         assert len(regions) >= 1
-        angles = [r.slope_angle for r in regions]
+        angles = [r.angle for r in regions]
         closest = min(angles, key=lambda a: abs(a - 63.0))
         assert abs(closest - 63.0) < 5.0
 
     def test_shallow_slope(self):
         """A shallow slope (~27°) should be detected with the right angle."""
         mesh = _make_ramp(angle_deg=27.0, width=5.0)
-        regions = detect_features(mesh, min_area_fraction=0.05).regions
+        regions = detect_features(mesh, min_area=0.05).regions
         assert len(regions) >= 1
-        angles = [r.slope_angle for r in regions]
+        angles = [r.angle for r in regions]
         closest = min(angles, key=lambda a: abs(a - 27.0))
         assert abs(closest - 27.0) < 5.0
 
@@ -227,8 +227,8 @@ def _make_region(slope_angle=45.0, length=0.3, width=0.2, direction=0):
         face_indices=[0],
         avg_normal=np.array([0.5, 0.0, 0.5]),
         area=1.0,
-        slope_angle=slope_angle,
-        slope_direction=direction,
+        angle=slope_angle,
+        direction=direction,
         length=length,
         width=width,
         height=0.1,
