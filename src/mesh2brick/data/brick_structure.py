@@ -246,12 +246,12 @@ class SlopeBrick(Brick):
                 stud_x = slice(sx.start, sx.stop - run)
             return (slope_x, sy, sz), (stud_x, sy, sz)
         else:
-            if self.slope_direction == 1:  # +Y: slope at low y, stud at high y
-                slope_y = slice(sy.start, sy.start + run)
-                stud_y = slice(sy.start + run, sy.stop)
-            else:  # -Y: slope at high y, stud at low y
+            if self.slope_direction == 1:  # +Y: slope at high y, stud at low y
                 slope_y = slice(sy.stop - run, sy.stop)
                 stud_y = slice(sy.start, sy.stop - run)
+            else:  # -Y: slope at low y, stud at high y
+                slope_y = slice(sy.start, sy.start + run)
+                stud_y = slice(sy.start + run, sy.stop)
             return (sx, slope_y, sz), (sx, stud_y, sz)
 
     def to_ldr(self, base_height: float = 0) -> str:
