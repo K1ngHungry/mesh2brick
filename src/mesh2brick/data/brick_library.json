@@ -199,15 +199,6 @@
   },
   "206": {
     "type": 1,
-    "length": 6,
-    "width": 2,
-    "height": 3,
-    "mass": 0.00242,
-    "inventory": 100000,
-    "partID": "52214.DAT"
-  },
-  "207": {
-    "type": 1,
     "length": 1,
     "width": 4,
     "height": 2,
@@ -215,7 +206,7 @@
     "inventory": 100000,
     "partID": "7835.DAT"
   },
-  "208": {
+  "207": {
     "type": 1,
     "length": 2,
     "width": 1,
@@ -224,7 +215,7 @@
     "inventory": 100000,
     "partID": "5404.DAT"
   },
-  "209": {
+  "208": {
     "type": 1,
     "length": 1,
     "width": 1,

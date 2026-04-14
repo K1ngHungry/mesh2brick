@@ -232,6 +232,9 @@ def match_slope_to_bricks(slope_angle: float, slope_bricks: list[dict] | None = 
 def mesh_angle_to_voxel_angle(mesh_angle: float, z_scale: float = 3.0) -> float:
     """Convert slope angle in mesh space to angle in voxel space.
 
+    DEPRECATED: This function is no longer needed when Z-scaling is applied
+    before slope detection. Kept for backward compatibility with external code.
+
     Mesh space is isometric (1:1:1) but voxel space is stretched 3x in Z
     to account for plate heights, changing the perceived slope angle.
     """
@@ -241,7 +244,7 @@ def compute_optimal_scale(
     regions: list[SlopeRegion],
     default_scale: float = 20.0,
     max_scale: float = 40.0,
-    min_steps: int = 2,
+    min_steps: int = 1,
 ) -> tuple[float, list[tuple[SlopeRegion, list[dict]]]]:
     if not regions:
         return default_scale, []
@@ -250,7 +253,8 @@ def compute_optimal_scale(
 
     region_info: list[tuple[SlopeRegion, list[dict], float]] = []
     for region in regions:
-        voxel_angle = mesh_angle_to_voxel_angle(region.angle)
+        # Angles are already in voxel space, no conversion needed
+        voxel_angle = region.angle
         matched = match_slope_to_bricks(voxel_angle, slope_bricks)
         if not matched or region.length <= 0 or region.width <= 0:
             continue

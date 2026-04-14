@@ -159,7 +159,7 @@ def _resize_region(
         scale_factors[length_axis] = target_l / region_dims[length_axis]
 
         if region_dims[height_axis] > 0:
-            target_h = n_steps * brick['height'] / 3.0
+            target_h = n_steps * brick['height']
             scale_factors[height_axis] = target_h / region_dims[height_axis]
 
     for vi in vert_indices:

@@ -48,14 +48,19 @@ def prepare_slopes(
 ) -> SlopeResult:
     """Detect slope regions, scale and deform the mesh for brick tiling.
 
-    1. Detects slope regions and flat planes on the mesh.
-    2. Computes an optimal voxel scale that aligns slope dimensions to
+    1. Applies Z-scale (x3) for plate height compensation BEFORE detection.
+    2. Detects slope regions and flat planes on the mesh.
+    3. Computes an optimal voxel scale that aligns slope dimensions to
        available brick sizes.
-    3. If slopes were found, deforms the mesh so slope surfaces align to
+    4. If slopes were found, deforms the mesh so slope surfaces align to
        the voxel grid; otherwise just applies uniform scaling.
-    4. Applies Z-scale (x3) for plate height compensation.
     5. Computes world_dim from the resulting mesh bounds.
     """
+    # Apply Z-scale (3x) for plate height compensation BEFORE detection
+    vertices = np.asarray(mesh.vertices)
+    vertices[:, 2] *= 3.0
+    mesh.vertices = o3d.utility.Vector3dVector(vertices)
+
     features = detect_features(
         mesh,
         planar_err=cfg.planar_err,
@@ -78,10 +83,6 @@ def prepare_slopes(
         mesh.compute_vertex_normals()
     else:
         mesh = apply_scale(mesh, optimal_scale)
-
-    vertices = np.asarray(mesh.vertices)
-    vertices[:, 2] *= 3.0
-    mesh.vertices = o3d.utility.Vector3dVector(vertices)
 
     extent = np.asarray(mesh.get_max_bound()) - np.asarray(mesh.get_min_bound())
     world_dim = (
