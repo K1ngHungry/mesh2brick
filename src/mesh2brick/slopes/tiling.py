@@ -247,14 +247,10 @@ def place_slope_bricks(
                 rejected_no_voxels += 1
                 continue
 
-            # Support check
+            # Support check - reject if no voxels in footprint
             if not remaining[brick.slice].any():
-                sx, sy, sz = brick.slice
-                if brick.z > 0 and voxels[sx, sy, brick.z - 1].any():
-                    pass  # Ridge — supported from below
-                else:
-                    rejected_no_voxels += 1
-                    continue
+                rejected_no_voxels += 1
+                continue
 
             # Noise check
             slope_sl, stud_sl = brick.slope_slice()

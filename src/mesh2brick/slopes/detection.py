@@ -244,7 +244,7 @@ def compute_optimal_scale(
     regions: list[SlopeRegion],
     default_scale: float = 20.0,
     max_scale: float = 40.0,
-    min_steps: int = 1,
+    min_steps: int = 2,
 ) -> tuple[float, list[tuple[SlopeRegion, list[dict]]]]:
     if not regions:
         return default_scale, []
