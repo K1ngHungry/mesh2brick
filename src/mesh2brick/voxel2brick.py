@@ -67,12 +67,13 @@ def get_merged_brick(b1: Brick, b2: Brick) -> Brick | None:
 
 
 class Voxel2Brick:
-    def __init__(self, voxels: np.ndarray, max_failures: int = 10, seed: int = 42):
+    def __init__(self, voxels: np.ndarray, max_failures: int = 10, seed: int = 42, use_plates: bool = True):
         self.voxels = voxels.astype(bool)
         self.bricks = ConnectivityBrickStructure(voxels.shape)
 
         self.n_failures = 0
         self.max_failures = max_failures
+        self.allowed_heights = (3, 1) if use_plates else (3,)
 
         self.rng = np.random.default_rng(seed)
 
@@ -92,7 +93,7 @@ class Voxel2Brick:
         t_start = time.time()
 
         # Initialize structure greedily
-        self._brickify_voxels_greedy(self.voxels, self._greedy_priority)
+        self._brickify_voxels_greedy(self.voxels, self._greedy_priority, allowed_heights=self.allowed_heights)
         min_components_possible = nx.number_connected_components(self.bricks.neighbor_graph)
 
         # Split and re-merge critical connectivity areas
@@ -105,7 +106,8 @@ class Voxel2Brick:
             removed_bricks = self.bricks.remove_voxel_subset(critical_voxels)
             reverse_layer_order = (self.rng.uniform() > 0.5)
             self._brickify_voxels_greedy(critical_voxels, self._component_priority,
-                                         reverse_layer_order=reverse_layer_order)
+                                         reverse_layer_order=reverse_layer_order,
+                                         allowed_heights=self.allowed_heights)
 
             # Are the results better?
             new_n_components = self.bricks.n_components()
@@ -209,7 +211,8 @@ class Voxel2Brick:
         max_y = self.max_y - first_nonzero_idx(voxel_subset[..., z].sum(axis=0)[::-1])
         all_brick_placements = [Brick(type=t, l=l, w=w, h=h, rotation=r, x=x, y=y, z=z)
                                 for t, l, w, h, r in brick_candidates
-                                for x in range(min_x, max_x - l + 1) for y in range(min_y, max_y - w + 1)]
+                                for x in range(min_x, max_x - l + 1) for y in range(min_y, max_y - w + 1)
+                                if z + h <= self.max_z]
 
         # Filter out bricks that are not completely contained within the voxels
         valid_brick_placements = list(filter(lambda b: voxel_subset[b.slice].all(), all_brick_placements))
@@ -276,7 +279,7 @@ class Voxel2Brick:
         components = set()
         if brick.z > 0:
             components |= set(np.unique(self.bricks.component_labels()[*brick.slice_2d, brick.z - 1])) - {0}
-        if brick.z < self.max_z - 1:
+        if brick.z + brick.h < self.max_z:
             components |= set(np.unique(self.bricks.component_labels()[*brick.slice_2d, brick.z + brick.h])) - {0}
         return len(components)
 

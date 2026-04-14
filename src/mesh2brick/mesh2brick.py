@@ -65,6 +65,7 @@ class Mesh2Brick:
         voxel_array = np.zeros(self.world_dim, dtype=np.uint8)
         for voxel in voxel_indices:
             idx = np.floor(voxel.grid_index).astype(int)
-            voxel_array[tuple(idx)] = 1
+            if all(0 <= i < d for i, d in zip(idx, self.world_dim)):
+                voxel_array[tuple(idx)] = 1 
 
         return voxel_array
