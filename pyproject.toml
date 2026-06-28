@@ -6,7 +6,8 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    { name = "Ava Pun", email = "apun@andrew.cmu.edu" }
+    { name = "Ava Pun", email = "apun@andrew.cmu.edu" },
+    { name = "Kevin Dai", email = "kevindai@andrew.cmu.edu" },
 ]
 requires-python = ">=3.10"
 keywords = ["lego", "bricks", "mesh", "voxel", "3d", "geometry"]
