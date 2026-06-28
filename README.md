@@ -11,8 +11,8 @@ To use as a standalone project, first install the package manager [uv](https://d
 repository:
 
 ```bash
-git clone https://github.com/AvaLovelace1/BrickGPT.git
-cd BrickGPT/src/mesh2brick
+git clone https://github.com/K1ngHungry/mesh2brick.git
+cd mesh2brick
 ```
 
 Finally, run the `mesh2brick` script with the following command. `uv` automatically installs all dependencies upon
@@ -42,13 +42,13 @@ Run `uv run mesh2brick --help` to see all available options.
 To install `mesh2brick` as a package in an existing project, run:
 
 ```bash
-pip install "mesh2brick @ git+https://github.com/AvaLovelace1/BrickGPT.git/#subdirectory=src/mesh2brick"
+pip install mesh2brick
 ```
 
 if using `pip`, or
 
 ```bash
-uv add "mesh2brick @ git+https://github.com/AvaLovelace1/BrickGPT.git/#subdirectory=src/mesh2brick"
+uv add mesh2brick
 ```
 
 if using `uv`.

@@ -3,18 +3,37 @@ name = "mesh2brick"
 version = "0.1.0"
 description = "Convert a 3D object into a brick structure."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Ava Pun", email = "apun@andrew.cmu.edu" }
 ]
 requires-python = ">=3.10"
+keywords = ["lego", "bricks", "mesh", "voxel", "3d", "geometry"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
 dependencies = [
     "gurobipy",
-    "matplotlib",
     "networkx",
     "numpy",
     "open3d",
     "scipy",
 ]
+
+[project.urls]
+Homepage = "https://github.com/K1ngHungry/mesh2brick"
+Repository = "https://github.com/K1ngHungry/mesh2brick"
+Issues = "https://github.com/K1ngHungry/mesh2brick/issues"
 
 [project.scripts]
 mesh2brick = "mesh2brick.__main__:main"
