@@ -2,6 +2,7 @@ import numpy as np
 import open3d as o3d
 
 from mesh2brick.data.brick_structure import BrickStructure
+from mesh2brick.slopes import prepare_slopes, place_slope_bricks, SlopeConfig
 from mesh2brick.voxel2brick import voxel2brick
 
 
@@ -26,20 +27,60 @@ class Mesh2Brick:
             self,
             world_dim: tuple[int, int, int] = (20, 20, 20), #change
             start_grid_shape: tuple[int, int, int] = (128, 128, 128),
+            enable_slopes: bool = True,
+            slope_config: SlopeConfig | None = None,
             **kwargs,
     ):
         self.world_dim = world_dim
         self.start_grid_shape = start_grid_shape
+        self.enable_slopes = enable_slopes
+        self.slope_config = slope_config if slope_config is not None else SlopeConfig()
         self.kwargs = kwargs
 
     def __call__(self, mesh, x_rotation: float = 90) -> BrickStructure:
         """
         :param mesh: A mesh object or a string, the filename of the input mesh.
-        :return: The mesh converted to a brick structure.
+            Any format Open3D can read is accepted (e.g. ``.obj``, ``.glb``).
+        :return: The mesh converted to a brick structure. When ``enable_slopes``
+            is set, sloped surfaces are detected, the mesh is deformed to align
+            them to the voxel grid, and slope bricks are placed on those regions.
         """
         if isinstance(mesh, str):
             mesh = o3d.io.read_triangle_mesh(mesh)
-        bricks = voxel2brick(self.mesh2voxel(mesh, x_rotation=x_rotation), **self.kwargs)
+        if self.enable_slopes:
+            return self._mesh2brick_with_slopes(mesh, x_rotation=x_rotation)
+        return voxel2brick(self.mesh2voxel(mesh, x_rotation=x_rotation), **self.kwargs)
+
+    def _mesh2brick_with_slopes(self, mesh, x_rotation: float = 90) -> BrickStructure:
+        """Slope-aware pipeline mirroring the Objaverse evaluation flow: detect
+        sloped surfaces, deform the mesh to align them to the voxel grid, place
+        slope bricks on those regions, then fill the remainder with standard
+        bricks."""
+        mesh = normalize_mesh(mesh, x_rotation=x_rotation)
+
+        resolution = self.world_dim[0]
+        slope_result = prepare_slopes(mesh, resolution=resolution, cfg=self.slope_config)
+
+        # Voxelize the (deformed/scaled) mesh on a unit grid.
+        voxel_grid = o3d.geometry.VoxelGrid.create_from_triangle_mesh(slope_result.mesh, 1.0)
+        voxels = np.zeros(slope_result.world_dim, dtype=np.uint8)
+        for voxel in np.asarray(voxel_grid.get_voxels()):
+            idx = tuple(np.floor(voxel.grid_index).astype(int))
+            if all(0 <= i < d for i, d in zip(idx, slope_result.world_dim)):
+                voxels[idx] = 1
+
+        # Place slope bricks on detected regions; fill the rest with standard bricks.
+        if slope_result.assignments:
+            voxel_origin = np.asarray(voxel_grid.origin)
+            slope_bricks, remaining_voxels = place_slope_bricks(
+                voxels, slope_result.mesh, slope_result.assignments, voxel_origin=voxel_origin,
+            )
+        else:
+            slope_bricks, remaining_voxels = [], voxels
+
+        bricks = voxel2brick(remaining_voxels, **self.kwargs)
+        for brick in slope_bricks:
+            bricks.add_brick(brick)
         return bricks
 
     def mesh2voxel(self, mesh, x_rotation: float = 90) -> np.ndarray:

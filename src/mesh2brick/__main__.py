@@ -7,7 +7,8 @@ from mesh2brick.mesh2brick import Mesh2Brick
 def main():
     args = parse_args()
 
-    mesh2brick = Mesh2Brick(world_dim=(args.world_dim, args.world_dim, args.world_dim), max_failures=args.max_failures)
+    mesh2brick = Mesh2Brick(world_dim=(args.world_dim, args.world_dim, args.world_dim),
+                            max_failures=args.max_failures, enable_slopes=not args.disable_slopes)
     bricks = mesh2brick(args.input_file, x_rotation=args.x_rotation)
 
     if args.output_file.endswith('.json'):
@@ -37,6 +38,9 @@ def parse_args():
                         help='Maximum number of failed re-merge attempts in the mesh2brick algorithm before timing out.')
     parser.add_argument('--x_rotation', type=int, default=90,
                         help='Rotation of the input mesh around the x-axis in degrees.')
+    parser.add_argument('--disable_slopes', action='store_true',
+                        help='Disable slope detection/deformation/placement and use the baseline '
+                             '(standard-brick-only) pipeline. Slopes are enabled by default.')
     return parser.parse_args()
 
 
